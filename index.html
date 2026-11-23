@@ -89,6 +89,16 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
   <h1>Shorts control panel</h1>
   <p class="sub">Make Shorts, and set up a channel step by step.</p>
 
+  <section id="unlock" hidden>
+    <h2>Unlock the panel</h2>
+    <p class="hint" style="margin:0 0 10px">This device doesn't have your GitHub key yet. Type your panel password to unlock it.</p>
+    <label for="u-pass">Password</label>
+    <input id="u-pass" type="password" autocomplete="current-password">
+    <label class="auto"><input type="checkbox" id="u-remember" checked> Remember on this device</label>
+    <div class="row"><button id="u-go" class="primary">Unlock</button></div>
+    <p class="result" id="u-res"></p>
+  </section>
+
   <div class="tabs" role="tablist">
     <button role="tab" id="tab-make" aria-selected="true">Wow in 60</button>
     <button role="tab" id="tab-kids" aria-selected="false">Giggle Garden</button>
@@ -250,10 +260,30 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
     <input id="repo" placeholder="username/YouTube" autocapitalize="off" autocomplete="off">
     <label for="token">Access token</label>
     <input id="token" type="password" placeholder="github_pat_..." autocomplete="off">
-    <div class="row"><button id="save">Save on this device</button></div>
+    <div class="row"><button id="save">Save on this device</button><button id="forget">Forget on this device</button></div>
+    <details style="margin-top:14px" id="lockbox">
+      <summary>Use this panel on other devices (password lock)</summary>
+      <p>Lock your token with a password. The locked copy is saved as <b>vault.json</b> next to this panel. On any other device, open the panel and type the password, with no token to paste. Without the password the locked copy is useless, but because it sits on a public page, use a long password: at least 12 characters, a short phrase works well.</p>
+      <label for="l-pass">Choose a password</label>
+      <input id="l-pass" type="password" autocomplete="new-password">
+      <label for="l-pass2">Type it again</label>
+      <input id="l-pass2" type="password" autocomplete="new-password">
+      <div class="row"><button id="l-make" class="primary">Create the lock</button></div>
+      <div id="l-out" hidden>
+        <p class="result ok" id="l-msg"></p>
+        <ol class="do">
+          <li>Tap <b>Copy</b> to copy the locked file:
+            <div class="copy"><code id="l-json" style="max-height:120px;overflow:auto"></code><button id="l-copy">Copy</button></div></li>
+          <li>Tap <b>Open GitHub</b>. It opens a new file called <b>vault.json</b> in the repo where this panel lives. Paste into the big box (replace anything there) and tap <b>Commit changes</b>.
+            <div class="row" style="margin-top:8px"><a class="btn" id="l-new" target="_blank" rel="noopener">Open GitHub (new file)</a><a class="btn" id="l-edit" target="_blank" rel="noopener">Already have vault.json? Edit it</a></div></li>
+          <li>After a minute, open the panel on your other device. It will ask for the password.</li>
+        </ol>
+      </div>
+      <p class="result" id="l-res"></p>
+    </details>
     <details style="margin-top:14px">
       <summary>How to get the token</summary>
-      <p>The Setup tab, step 1, walks you through it with buttons. In short: on github.com open your profile picture, Settings, Developer settings, Personal access tokens, Fine-grained tokens, then Generate new token. Choose only your youtube repository, and under Repository permissions set Contents, Actions and Variables to Read and write. The token stays in this browser only and is sent only to GitHub.</p>
+      <p>The Setup tab, step 1, walks you through it with buttons. To avoid pasting it on every device, use the password lock above. In short: on github.com open your profile picture, Settings, Developer settings, Personal access tokens, Fine-grained tokens, then Generate new token. Choose only your youtube repository, and under Repository permissions set Contents, Actions and Variables to Read and write. The token stays in this browser only and is sent only to GitHub.</p>
     </details>
   </section>
 </main>
@@ -1083,8 +1113,121 @@ async function startTest() {
   }
 }
 
+/* ---------------- Password lock ----------------
+   The token is encrypted in the browser with AES-GCM, using a key made from the password with PBKDF2
+   (SHA-256, 600,000 rounds). Only the encrypted copy is put in vault.json; the password never leaves the device. */
+
+const VAULT_ITER = 600000;
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function vaultKey(password, salt, iter) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, base,
+    { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+
+async function lockToken(password, repoName, token) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await vaultKey(password, salt, VAULT_ITER);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key,
+    new TextEncoder().encode(JSON.stringify({ repo: repoName, token }))));
+  return { v: 1, kdf: "PBKDF2-SHA256", iter: VAULT_ITER, salt: b64(salt), iv: b64(iv), data: b64(ct) };
+}
+
+async function unlockVault(vault, password) {
+  const key = await vaultKey(password, unb64(vault.salt), vault.iter || VAULT_ITER);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(vault.iv) }, key, unb64(vault.data));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+// Where this panel is hosted (for the GitHub links): https://<owner>.github.io/<repo>/
+function panelRepo() {
+  const host = location.hostname, m = host.match(/^([a-z0-9-]+)\.github\.io$/i);
+  if (!m) return null;
+  const seg = location.pathname.split("/").filter(Boolean)[0];
+  return { owner: m[1], repo: seg && !seg.includes(".") ? seg : m[1] + ".github.io" };
+}
+
+$("l-make").onclick = async () => {
+  readConn();
+  const out = $("l-res"); out.className = "result"; out.textContent = "";
+  const p1 = $("l-pass").value, p2 = $("l-pass2").value;
+  if (!repo || !tok) { out.className = "result bad"; out.textContent = "Fill in the repository and token above first."; return; }
+  if (p1.length < 12) { out.className = "result bad"; out.textContent = "Use at least 12 characters. A short phrase like 'giggle garden sunshine 7' works well."; return; }
+  if (p1 !== p2) { out.className = "result bad"; out.textContent = "The two passwords are different. Type them again."; return; }
+  if (!window.crypto || !crypto.subtle) { out.className = "result bad"; out.textContent = "This browser can't lock it here. Open the panel from its github.io link and try again."; return; }
+  $("l-make").disabled = true; out.textContent = "Locking...";
+  try {
+    const vault = await lockToken(p1, repo, tok);
+    const json = JSON.stringify(vault);
+    if ((await unlockVault(vault, p1)).token !== tok) throw new Error("check failed");
+    $("l-json").textContent = json;
+    $("l-copy").onclick = () => copyText(json, $("l-copy"));
+    const pr = panelRepo();
+    if (pr) {
+      $("l-new").href = `https://github.com/${pr.owner}/${pr.repo}/new/main?filename=vault.json&value=${encodeURIComponent(json)}`;
+      $("l-edit").href = `https://github.com/${pr.owner}/${pr.repo}/edit/main/vault.json`;
+      $("l-new").hidden = $("l-edit").hidden = false;
+    } else {
+      $("l-new").hidden = $("l-edit").hidden = true;
+    }
+    $("l-msg").textContent = "Locked. Now save it as vault.json in your panel's repo (admin):" +
+      (pr ? "" : " open your admin repo on GitHub, tap Add file, Create new file, name it vault.json, paste and commit.");
+    $("l-out").hidden = false; out.textContent = "";
+    $("l-pass").value = $("l-pass2").value = "";
+  } catch (e) { out.className = "result bad"; out.textContent = "Could not lock it: " + e.message; }
+  $("l-make").disabled = false;
+};
+
+$("forget").onclick = () => {
+  try { localStorage.removeItem("sp_tok"); localStorage.removeItem("sp_repo"); } catch (e) {}
+  repo = tok = ""; $("repo").value = $("token").value = "";
+  say("Forgotten on this device. Reload the page to unlock it again with your password.", "ok");
+};
+
+let VAULT = null;
+async function checkVault() {
+  if (recall("sp_tok", "")) return;
+  try {
+    const r = await fetch("vault.json", { cache: "no-store" });
+    if (!r.ok) return;
+    const v = await r.json();
+    if (!v || !v.data || !v.salt || !v.iv) return;
+    VAULT = v;
+    $("unlock").hidden = false;
+    $("u-pass").focus();
+  } catch (e) { /* no vault: the normal token boxes are used */ }
+}
+
+async function doUnlock() {
+  const out = $("u-res");
+  if (!VAULT) return;
+  out.className = "result"; out.textContent = "Unlocking...";
+  $("u-go").disabled = true;
+  try {
+    const got = await unlockVault(VAULT, $("u-pass").value);
+    repo = got.repo || ""; tok = got.token || "";
+    $("repo").value = repo; $("token").value = tok;
+    if ($("u-remember").checked) { store("sp_repo", repo); store("sp_tok", tok); }
+    $("u-pass").value = "";
+    $("unlock").hidden = true;
+    say("Unlocked. Ready.", "ok");
+    renderStep();
+    kidsLoaded = false;
+    if (!$("page-kids").hidden) kidsOpen();
+  } catch (e) {
+    out.className = "result bad";
+    out.textContent = "That password didn't work. Check it and try again.";
+  }
+  $("u-go").disabled = false;
+}
+$("u-go").onclick = doUnlock;
+$("u-pass").onkeydown = e => { if (e.key === "Enter") doUnlock(); };
+
 load();
 showTab(recall("sp_tab", "make"));
+checkVault();
 </script>
 </body>
 </html>
