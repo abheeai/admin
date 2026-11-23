@@ -76,6 +76,12 @@ ol.do li{margin:8px 0}
 .jump button.done::before{content:"✓ ";color:var(--ok)}
 .auto{display:flex;gap:10px;align-items:center;font-weight:400;margin:12px 0 0}
 .auto input{width:auto}
+.tabs button{padding:11px 4px;font-size:.92rem}
+ul.list{list-style:none;margin:0;padding:0}
+ul.list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:.95rem}
+ul.list li:first-child{border-top:0}
+ul.list li span{overflow-wrap:anywhere;min-width:0}
+ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
 </style>
 </head>
 <body>
@@ -100,6 +106,36 @@ ol.do li{margin:8px 0}
       <option value="hi">Hindi</option>
     </select>
 
+    <label for="k-voice-en" style="margin-top:14px">English voice</label>
+    <select id="k-voice-en">
+      <optgroup label="Natural voices (Kokoro)">
+        <option value="auto">Heart (warm, most natural, default)</option>
+        <option value="af_bella">Bella (bright and friendly)</option>
+        <option value="af_nicole">Nicole (soft and calm)</option>
+        <option value="bf_emma">Emma (British)</option>
+      </optgroup>
+      <optgroup label="Older voices (edge-tts)">
+        <option value="en-US-JennyNeural">Jenny (warm storyteller)</option>
+        <option value="en-US-AnaNeural">Ana (child voice)</option>
+        <option value="en-GB-MaisieNeural">Maisie (British child voice)</option>
+        <option value="en-IN-NeerjaNeural">Neerja (Indian English, lively)</option>
+      </optgroup>
+    </select>
+    <label for="k-voice-hi">Hindi voice</label>
+    <select id="k-voice-hi">
+      <optgroup label="Older voices (edge-tts)">
+        <option value="auto">Swara (female, default)</option>
+        <option value="hi-IN-MadhurNeural">Madhur (male, soft)</option>
+      </optgroup>
+      <optgroup label="Natural voices (Kokoro, Hindi is experimental)">
+        <option value="hf_alpha">Alpha (female)</option>
+        <option value="hf_beta">Beta (female)</option>
+        <option value="hm_omega">Omega (male)</option>
+        <option value="hm_psi">Psi (male)</option>
+      </optgroup>
+    </select>
+    <p class="hint" style="margin:6px 0 0">The voice reads the rhyme like a storyteller. It cannot sing, so the rhymes don't use "la la la". Kokoro's Hindi voices had little training, so compare them with Swara before saving one as the daily default. If a Kokoro voice ever fails, the video uses Jenny (English) or Swara (Hindi) instead.</p>
+
     <label class="auto"><input type="checkbox" id="k-music" checked> Add background music</label>
 
     <div id="k-musicopts">
@@ -121,6 +157,22 @@ ol.do li{margin:8px 0}
       <button id="k-run" class="primary">Make a rhyme now</button>
     </div>
     <p class="result" id="k-res"></p>
+  </section>
+
+  <section>
+    <h2>Music tracks</h2>
+    <p class="hint" style="margin:0 0 10px">Use only tracks you are allowed to use, such as YouTube Audio Library tracks marked "Attribution not required". Cheerful tracks with no singing work best.</p>
+    <ul id="k-tracklist" class="list"></ul>
+    <label for="k-upload" style="margin-top:14px">Add tracks <span class="hint">(audio files, up to 25 MB each)</span></label>
+    <input id="k-upload" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac,.flac,.opus" multiple>
+    <div class="row"><button id="k-uploadbtn">Upload to the music folder</button></div>
+    <p class="result" id="k-mres"></p>
+  </section>
+
+  <section>
+    <h2>Latest videos and runs</h2>
+    <div class="row" style="margin-top:0"><button id="k-videos">Show latest videos</button><button id="k-runs">Show latest runs</button></div>
+    <div id="k-list"></div>
   </section>
 
   <section>
@@ -201,7 +253,7 @@ ol.do li{margin:8px 0}
     <div class="row"><button id="save">Save on this device</button></div>
     <details style="margin-top:14px">
       <summary>How to get the token</summary>
-      <p>On github.com open Settings, Developer settings, Personal access tokens, Fine-grained tokens, then Generate new token. Choose only your Shorts repository, and under Repository permissions set Contents and Actions to Read and write. The token stays in this browser only and is sent only to GitHub.</p>
+      <p>The Setup tab, step 1, walks you through it with buttons. In short: on github.com open your profile picture, Settings, Developer settings, Personal access tokens, Fine-grained tokens, then Generate new token. Choose only your youtube repository, and under Repository permissions set Contents, Actions and Variables to Read and write. The token stays in this browser only and is sent only to GitHub.</p>
     </details>
   </section>
 </main>
@@ -227,6 +279,8 @@ $("save").onclick = () => {
   try { localStorage.setItem("sp_repo", repo); localStorage.setItem("sp_tok", tok); say("Saved on this device.", "ok"); }
   catch (e) { say("This browser would not save it. You will need to paste it each time.", "bad"); }
   renderStep();
+  kidsLoaded = false;
+  if (!$("page-kids").hidden) kidsOpen();
 };
 
 async function gh(path, opt = {}) {
@@ -368,9 +422,16 @@ $("k-music").onchange = () => { kidsUi(); store("kg_music", $("k-music").checked
 $("k-level").oninput = () => { kidsUi(); store("kg_level", $("k-level").value); };
 $("k-track").onchange = () => { store("kg_track", $("k-track").value); $("k-audio").pause(); };
 $("k-lang").onchange = () => store("kg_lang", $("k-lang").value);
+$("k-voice-en").onchange = () => store("kg_voice_en", $("k-voice-en").value);
+$("k-voice-hi").onchange = () => store("kg_voice_hi", $("k-voice-hi").value);
+const voiceName = (id, v) => { const o = [...$(id).options].find(x => x.value === v); return o ? o.textContent.split(" (")[0] : v; };
 
 function kidsRestore() {
   $("k-lang").value = recall("kg_lang", "auto");
+  $("k-voice-en").value = recall("kg_voice_en", "auto");
+  $("k-voice-hi").value = recall("kg_voice_hi", "auto");
+  if (!$("k-voice-en").value) $("k-voice-en").value = "auto";
+  if (!$("k-voice-hi").value) $("k-voice-hi").value = "auto";
   $("k-music").checked = recall("kg_music", "1") === "1";
   $("k-level").value = recall("kg_level", "3");
   kidsUi();
@@ -392,9 +453,11 @@ async function loadTracks() {
     kidsTracks = (Array.isArray(list) ? list : []).filter(f => f.type === "file" && MUSIC_EXT.test(f.name));
     fillTracks(recall("kg_track", "auto"));
     kidsLoaded = true;
+    renderTrackList();
     kres(kidsTracks.length + " tracks found in your music folder.", kidsTracks.length ? "ok" : "bad");
   } catch (e) {
-    kres(e.status === 404 ? "No music folder found in your repo." : "Could not load tracks: " + e.message, "bad");
+    if (e.status === 404) { kidsTracks = []; fillTracks("auto"); renderTrackList(); kidsLoaded = true; }
+    kres(e.status === 404 ? "No music folder yet. Add tracks under Music tracks below." : "Could not load tracks: " + e.message, "bad");
   }
   $("k-reload").disabled = false;
 }
@@ -425,7 +488,9 @@ function kidsChoice() {
     lang: $("k-lang").value,
     music: $("k-music").checked ? "true" : "false",
     music_track: $("k-music").checked ? $("k-track").value : "auto",
-    music_level: String($("k-level").value)
+    music_level: String($("k-level").value),
+    voice_en: $("k-voice-en").value,
+    voice_hi: $("k-voice-hi").value
   };
 }
 
@@ -468,8 +533,9 @@ $("k-run").onclick = async () => {
     kidsPoll = setInterval(poll, 20000);
   } catch (e) {
     $("k-run").disabled = false;
-    kres("Could not start: " + e.message + (e.status === 403 || e.status === 404
-      ? "\nCheck that your token has Actions set to Read and write." : ""), "bad");
+    kres("Could not start: " + e.message + (e.status === 422
+      ? "\nYour kids.yml is an older version without the voice options. Replace it with the newest kids.yml."
+      : e.status === 403 || e.status === 404 ? "\nCheck that your token has Actions set to Read and write." : ""), "bad");
   }
 };
 
@@ -482,10 +548,11 @@ async function setVar(name, value) {
   }
 }
 
-function describeDefaults(m, t, l) {
-  return m === "false" ? "Daily run: no background music."
+function describeDefaults(m, t, l, ve, vh) {
+  const voices = " Voices: " + voiceName("k-voice-en", ve || "auto") + " (English), " + voiceName("k-voice-hi", vh || "auto") + " (Hindi).";
+  return (m === "false" ? "Daily run: no background music."
     : "Daily run: background music on, track " + (t && t !== "auto" ? t.replace(MUSIC_EXT, "") : "auto (rotate)") +
-      ", intensity " + (l || "3") + " of 10.";
+      ", intensity " + (l || "3") + " of 10.") + voices;
 }
 
 $("k-save").onclick = async () => {
@@ -497,7 +564,9 @@ $("k-save").onclick = async () => {
     await setVar("KIDS_MUSIC", c.music);
     await setVar("KIDS_MUSIC_TRACK", c.music_track);
     await setVar("KIDS_MUSIC_LEVEL", c.music_level);
-    const d = describeDefaults(c.music, c.music_track, c.music_level);
+    await setVar("KIDS_VOICE_EN", c.voice_en);
+    await setVar("KIDS_VOICE_HI", c.voice_hi);
+    const d = describeDefaults(c.music, c.music_track, c.music_level, c.voice_en, c.voice_hi);
     $("k-defaults").textContent = d;
     kres("Saved. " + d, "ok");
   } catch (e) {
@@ -514,12 +583,115 @@ $("k-loaddef").onclick = async () => {
                            catch (e) { if (e.status === 404) return ""; throw e; } };
   try {
     const m = (await get("KIDS_MUSIC")) || "true", t = (await get("KIDS_MUSIC_TRACK")) || "auto",
-          l = (await get("KIDS_MUSIC_LEVEL")) || "3";
-    $("k-defaults").textContent = describeDefaults(m, t, l);
+          l = (await get("KIDS_MUSIC_LEVEL")) || "3", ve = (await get("KIDS_VOICE_EN")) || "auto",
+          vh = (await get("KIDS_VOICE_HI")) || "auto";
+    $("k-defaults").textContent = describeDefaults(m, t, l, ve, vh);
   } catch (e) {
     $("k-defaults").textContent = "Could not load: " + e.message +
       (e.status === 403 ? " (the token needs Variables set to Read and write)" : "");
   }
+};
+
+/* music folder: list, upload, remove */
+const mres = (msg, cls) => { const o = $("k-mres"); o.className = "result " + (cls || ""); o.textContent = msg; };
+
+function renderTrackList() {
+  const ul = $("k-tracklist"); ul.innerHTML = "";
+  if (!kidsTracks.length) { ul.innerHTML = "<li><span class='hint'>No tracks in the music folder yet.</span></li>"; return; }
+  kidsTracks.forEach(t => {
+    const li = document.createElement("li");
+    const s = document.createElement("span");
+    s.textContent = t.name.replace(MUSIC_EXT, "") + " (" + (t.size / 1048576).toFixed(1) + " MB)";
+    const b = document.createElement("button"); b.textContent = "Remove";
+    b.onclick = () => removeTrack(t, b);
+    li.append(s, b); ul.appendChild(li);
+  });
+}
+
+async function removeTrack(t, btn) {
+  if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.textContent = "Tap again to remove"; return; }
+  btn.disabled = true;
+  try {
+    const info = await gh("/repos/" + repo);
+    await gh("/repos/" + repo + "/contents/" + t.path.split("/").map(encodeURIComponent).join("/"), { method: "DELETE",
+      body: JSON.stringify({ message: "remove music " + t.name, sha: t.sha, branch: info.default_branch }) });
+    mres("Removed " + t.name.replace(MUSIC_EXT, "") + ".", "ok");
+    await loadTracks();
+  } catch (e) { btn.disabled = false; mres("Could not remove: " + e.message, "bad"); }
+}
+
+$("k-uploadbtn").onclick = async () => {
+  readConn();
+  if (!repo || !tok) return mres("Add your repository and token under GitHub connection first.", "bad");
+  const files = [...$("k-upload").files];
+  if (!files.length) return mres("Choose one or more audio files first.", "bad");
+  if (files.some(f => f.size > 25 * 1048576)) return mres("Remove files larger than 25 MB.", "bad");
+  $("k-uploadbtn").disabled = true;
+  try {
+    const info = await gh("/repos/" + repo);
+    for (let i = 0; i < files.length; i++) {
+      mres("Uploading track " + (i + 1) + " of " + files.length + "...");
+      let name = files[i].name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      if (!MUSIC_EXT.test(name)) name += ".mp3";
+      const body = { message: "add music " + name, content: await fileB64(files[i]), branch: info.default_branch };
+      try { body.sha = (await gh("/repos/" + repo + "/contents/music/" + name)).sha; }
+      catch (e) { if (e.status !== 404) throw e; }
+      await gh("/repos/" + repo + "/contents/music/" + name, { method: "PUT", body: JSON.stringify(body) });
+    }
+    $("k-upload").value = "";
+    await loadTracks();
+    mres("Uploaded " + files.length + " track" + (files.length > 1 ? "s" : "") + ".", "ok");
+  } catch (e) {
+    mres("Could not upload: " + e.message + (e.status === 403 || e.status === 404
+      ? "\nCheck that your token has Contents set to Read and write." : ""), "bad");
+  }
+  $("k-uploadbtn").disabled = false;
+};
+
+/* latest videos and runs */
+$("k-videos").onclick = async () => {
+  readConn();
+  const box = $("k-list");
+  if (!repo || !tok) { box.textContent = "Add your repository and token under GitHub connection first."; return; }
+  box.textContent = "Loading...";
+  try {
+    let list = [];
+    try { list = JSON.parse(dec((await gh("/repos/" + repo + "/contents/kids_used.json")).content) || "[]"); }
+    catch (e) { if (e.status !== 404) throw e; }
+    box.innerHTML = "";
+    if (!list.length) { box.textContent = "No videos recorded yet."; return; }
+    list.slice(-8).reverse().forEach(v => {
+      const d = document.createElement("div"); d.className = "run";
+      const a = document.createElement("a"); a.target = "_blank"; a.rel = "noopener";
+      a.href = "https://youtube.com/shorts/" + encodeURIComponent(v.id || "");
+      a.textContent = v.title || v.theme || "Video";
+      const s = document.createElement("span"); s.className = "hint";
+      s.textContent = (v.lang === "hi" ? "Hindi" : "English") + (v.music ? ", music" : "") +
+        (v.ts ? ", " + new Date(v.ts * 1000).toLocaleDateString() : "");
+      d.append(a, s); box.appendChild(d);
+    });
+  } catch (e) { box.textContent = "Could not load videos: " + e.message; }
+};
+
+$("k-runs").onclick = async () => {
+  readConn();
+  const box = $("k-list");
+  if (!repo || !tok) { box.textContent = "Add your repository and token under GitHub connection first."; return; }
+  box.textContent = "Loading...";
+  try {
+    const r = await gh("/repos/" + repo + "/actions/workflows/kids.yml/runs?per_page=6");
+    box.innerHTML = "";
+    if (!r.workflow_runs.length) { box.textContent = "No runs yet."; return; }
+    r.workflow_runs.forEach(w => {
+      const d = document.createElement("div"); d.className = "run";
+      const state = w.status !== "completed" ? "Running" : (w.conclusion === "success" ? "Done" : "Failed");
+      const a = document.createElement("a"); a.href = w.html_url; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = new Date(w.created_at).toLocaleString() + (w.event === "schedule" ? " (daily)" : " (by you)");
+      const b = document.createElement("span");
+      b.textContent = state; b.className = state === "Done" ? "ok" : state === "Failed" ? "bad" : "";
+      d.append(a, b); box.appendChild(d);
+    });
+  } catch (e) { box.textContent = "Could not load runs: " + e.message; }
 };
 
 function kidsOpen() {
@@ -566,8 +738,11 @@ function playgroundUrl() {
   return REDIRECT + "/#step1&" + p.toString();
 }
 
+const N = id => STEPS.findIndex(s => s.id === id);
+
 const STEPS = [
   {
+    id: "channel",
     title: "Which channel are we setting up?",
     url: null,
     body: () => `
@@ -578,11 +753,35 @@ const STEPS = [
       <label for="channame">Exact channel name on YouTube <span class="hint">(as you typed it when you made the channel)</span></label>
       <input id="channame" value="${esc(NAME())}" autocomplete="off">
       <div class="tip">Before you start: on a tablet, open the browser menu and switch on <b>Desktop site</b>. Google Cloud and GitHub settings only show fully in desktop mode. Use the browser, not the GitHub app.</div>
-      <div class="tip">Already set up and only renewing the weekly token? Tap <b>Jump to a step</b> below and pick step 6.</div>`,
+      <div class="tip">Already set up and only renewing the weekly token? Tap <b>Jump to a step</b> below and pick step ${N("token")}.</div>`,
     after: () => {
       $("chansel").onchange = e => { chanKey = e.target.value; chanName = ""; store("sp_chan", chanKey); store("sp_chan_name", ""); renderStep(); };
       $("channame").oninput = e => { chanName = e.target.value.trim(); store("sp_chan_name", chanName); };
     }
+  },
+  {
+    id: "github",
+    title: "Connect this panel to GitHub",
+    url: () => "https://github.com/settings/personal-access-tokens/new",
+    body: () => `
+      <p class="why">This panel works your GitHub repo for you: it starts runs, uploads music and saves settings. For that it needs a key from GitHub, called an access token. You only do this once per device, or when the token expires.</p>
+      <ol class="do">
+        <li>Tap <b>Open the page</b>. It opens GitHub's "New fine-grained personal access token" form. Sign in if asked.</li>
+        <li><b>Token name</b>: type anything, for example:${copyBox("Token name", "Shorts panel")}</li>
+        <li><b>Expiration</b>: choose <b>Custom</b> and pick a date about a year away (or the longest offered).</li>
+        <li><b>Repository access</b>: choose <b>Only select repositories</b>, then pick your <b>youtube</b> repo (the one with the agents, not the panel's repo).</li>
+        <li>Under <b>Permissions</b>, tap <b>Add permissions</b> and tick <b>Contents</b>, <b>Actions</b> and <b>Variables</b>. Set each one to <b>Read and write</b>. (Metadata turns on by itself as Read-only. That is fine.)</li>
+        <li>Scroll down and tap <b>Generate token</b>. Copy the token straight away, because GitHub shows it only once.</li>
+        <li>Paste it below, together with your repo name, and tap <b>Save and test</b>.</li>
+      </ol>
+      <label for="s-repo">Repository <span class="hint">(your GitHub username, a slash, then youtube)</span></label>
+      <input id="s-repo" value="${esc(repo)}" placeholder="username/youtube" autocapitalize="off" autocomplete="off">
+      <label for="s-token">Access token</label>
+      <input id="s-token" type="password" value="${esc(tok)}" placeholder="github_pat_..." autocapitalize="off" autocomplete="off">
+      <div class="row"><button id="s-save" class="primary">Save and test</button></div>
+      <p class="result" id="s-res"></p>
+      <div class="tip">Already have a token but saving daily settings says 403? Open <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">your tokens</a>, tap its name, add <b>Variables: Read and write</b>, and tap <b>Update</b>. The token itself stays the same.</div>`,
+    after: () => { $("s-save").onclick = saveAndTest; }
   },
   {
     title: "Create the YouTube channel",
@@ -595,7 +794,7 @@ const STEPS = [
         <li>Type the name below and tap <b>Create</b>.</li>
       </ol>
       ${copyBox("Channel name", NAME())}
-      <div class="tip">If the name is taken, add a word like Kids or Rhymes, then go back to step 1 and type the new name. For the kids channel the name must still contain "Giggle Garden".</div>`
+      <div class="tip">If the name is taken, add a word like Kids or Rhymes, then go back to step 0 and type the new name. For the kids channel the name must still contain "Giggle Garden".</div>`
   },
   {
     title: "Turn on the YouTube upload service",
@@ -633,9 +832,10 @@ const STEPS = [
         <li>Scroll to <b>Test users</b> and tap <b>Add users</b>.</li>
         <li>Type the Gmail that owns your YouTube channels and tap <b>Save</b>. If it is already listed, skip this.</li>
       </ol>
-      <div class="tip">In Testing mode, the token you make in step 6 stops working after 7 days. When that happens, just do steps 6 and 7 again (about 3 minutes).</div>`
+      <div class="tip">In Testing mode, the token you make in step ${N("token")} stops working after 7 days. When that happens, just do steps ${N("token")} and ${N("secret")} again (about 3 minutes).</div>`
   },
   {
+    id: "client",
     title: "Get your Client ID and Client Secret",
     url: () => "https://console.cloud.google.com/apis/credentials",
     body: () => `
@@ -659,14 +859,15 @@ const STEPS = [
     }
   },
   {
+    id: "token",
     title: "Make the upload token",
     url: () => playgroundUrl(),
     body: () => `
       <p class="why">Google's OAuth Playground gives your agent a long-lasting key, called a refresh token, for this one channel.</p>
       ${clientId && clientSecret ? `<div class="tip">Your Client ID and Secret are sent to the page, so the settings and scopes may already be filled in. Check them in points 1 and 2 anyway.</div>` :
-        `<div class="tip">Tip: paste your Client ID and Secret into step 5 first and the page will try to fill everything in for you.</div>`}
+        `<div class="tip">Tip: paste your Client ID and Secret into step ${N("client")} first and the page will try to fill everything in for you.</div>`}
       <ol class="do">
-        <li>Tap <b>Open the page</b>. Tap the <b>gear icon</b> at the top right, tick <b>Use your own OAuth credentials</b>, and paste your Client ID and Client Secret from step 5.
+        <li>Tap <b>Open the page</b>. Tap the <b>gear icon</b> at the top right, tick <b>Use your own OAuth credentials</b>, and paste your Client ID and Client Secret from step ${N("client")}.
           ${clientId ? copyBox("OAuth Client ID", clientId) : ""}
           ${clientSecret ? copyBox("OAuth Client secret", clientSecret) : ""}
           Then close the gear menu.</li>
@@ -679,6 +880,7 @@ const STEPS = [
       </ol>`
   },
   {
+    id: "secret",
     title: "Save the token in GitHub",
     url: () => ghUrl("/settings/secrets/actions/new"),
     body: () => `
@@ -687,7 +889,7 @@ const STEPS = [
       <ol class="do">
         <li>Tap <b>Open the page</b>. It opens your repo's new secret form.</li>
         <li>In <b>Name</b>, paste this exactly:${copyBox("Secret name", C().secret)}</li>
-        <li>In <b>Secret</b>, paste the refresh token from step 6.</li>
+        <li>In <b>Secret</b>, paste the refresh token from step ${N("token")}.</li>
         <li>Tap <b>Add secret</b>.</li>
       </ol>
       <div class="tip">Renewing an old token? If GitHub says the name already exists, open
@@ -722,12 +924,12 @@ const STEPS = [
       <p class="why">${esc(NAME())} now makes a video by itself every day.</p>
       <ol class="do">
         <li>Check the new video on YouTube Studio and see that it looks right.</li>
-        <li>Every 7 days, while the Google app is in Testing, the token expires. The run will fail with an "invalid_grant" error. Then tap <b>Renew the token</b> below and do steps 6 and 7 again.</li>
-        <li>Want to set up the other channel? Go back to step 1 and pick it.</li>
+        <li>Every 7 days, while the Google app is in Testing, the token expires. The run will fail with an "invalid_grant" error. Then tap <b>Renew the token</b> below and do steps ${N("token")} and ${N("secret")} again.</li>
+        <li>Want to set up the other channel? Go back to step 0 and pick it.</li>
       </ol>
       <div class="row"><button id="renew" class="primary">Renew the token</button><button id="restart">Set up another channel</button></div>`,
     after: () => {
-      $("renew").onclick = () => goStep(6, true);
+      $("renew").onclick = () => goStep(N("token"), true);
       $("restart").onclick = () => goStep(0, false);
     }
   }
@@ -778,6 +980,33 @@ $("next").onclick = () => {
 };
 $("autoopen").checked = recall("sp_auto", "1") === "1";
 $("autoopen").onchange = e => store("sp_auto", e.target.checked ? "1" : "0");
+
+async function saveAndTest() {
+  $("repo").value = $("s-repo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "");
+  $("token").value = $("s-token").value.trim();
+  $("s-repo").value = $("repo").value;
+  readConn();
+  const out = $("s-res");
+  if (!repo || !tok) { out.className = "result bad"; out.textContent = "Fill in both boxes first."; return; }
+  store("sp_repo", repo); store("sp_tok", tok);
+  out.className = "result"; out.textContent = "Saved on this device. Testing...";
+  const lines = [];
+  let allOk = true;
+  const test = async (label, fn, fix) => {
+    try { await fn(); lines.push("✓ " + label); }
+    catch (e) { allOk = false; lines.push("✗ " + label + " (" + (e.status || e.message) + "). " + fix); }
+  };
+  await test("Can reach your repo", () => gh("/repos/" + repo),
+    "Check the repo name is exactly username/youtube, and that the token was given access to that repo.");
+  await test("Contents permission", () => gh("/repos/" + repo + "/contents/"),
+    "Add Contents: Read and write to the token.");
+  await test("Actions permission", () => gh("/repos/" + repo + "/actions/workflows"),
+    "Add Actions: Read and write to the token.");
+  await test("Variables permission", () => gh("/repos/" + repo + "/actions/variables"),
+    "Add Variables: Read and write to the token (needed only for saving daily music settings).");
+  out.className = "result " + (allOk ? "ok" : "bad");
+  out.textContent = lines.join("\n") + (allOk ? "\n\nAll good. Tap Done, next step." : "");
+}
 
 async function checkFiles() {
   readConn();
