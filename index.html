@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shorts Control Panel</title>
+<style>
+:root{
+  --bg:#f2f3f5; --card:#ffffff; --ink:#15191f; --mute:#5c6573; --line:#d9dde3;
+  --accent:#1a56c4; --accent-ink:#ffffff; --ok:#17794a; --bad:#b3261e; --soft:#e8effc;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12151a; --card:#1b2027; --ink:#eef1f5; --mute:#9aa4b2;
+    --line:#2c333d; --accent:#6ea0ff; --accent-ink:#0b1220; --ok:#5fd09a; --bad:#ff8a80; --soft:#1f2a3d;
+    color-scheme: dark;
+  }
+}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:17px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.5rem;margin:8px 0 4px;letter-spacing:-.01em}
+.sub{color:var(--mute);margin:0 0 16px}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{font-size:1.05rem;margin:0 0 12px}
+label{display:block;font-weight:600;margin:14px 0 6px}
+label:first-of-type{margin-top:0}
+.hint{font-weight:400;color:var(--mute);font-size:.9rem}
+input,textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);
+  border:1px solid var(--line);border-radius:8px;padding:12px}
+textarea{min-height:110px;resize:vertical}
+input:focus,textarea:focus,select:focus,button:focus-visible,a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button,a.btn{font:inherit;font-weight:600;border-radius:8px;padding:13px 16px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);cursor:pointer;flex:1 1 150px;text-align:center;text-decoration:none}
+button.primary,a.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:disabled{opacity:.55;cursor:wait}
+#files{list-style:none;margin:10px 0 0;padding:0;color:var(--mute);font-size:.92rem}
+#files li{display:flex;justify-content:space-between;gap:8px;padding:4px 0}
+#log{white-space:pre-wrap;font-size:.95rem;margin:0;min-height:1.5em}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.run{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.run:first-child{border-top:0}
+.run a{color:var(--accent)}
+details summary{cursor:pointer;font-weight:600}
+details p{color:var(--mute);margin:8px 0 0;font-size:.95rem}
+
+/* tabs */
+.tabs{display:flex;gap:6px;margin:0 0 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:5px}
+.tabs button{flex:1 1 0;border:0;background:transparent;padding:11px 8px;font-size:.98rem}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+[hidden]{display:none!important}
+
+/* setup wizard */
+.progress{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin:6px 0 4px}
+.progress div{height:100%;background:var(--accent);width:0;transition:width .25s}
+.stepcount{color:var(--mute);font-size:.9rem;margin:0}
+.step h2{font-size:1.2rem;margin:4px 0 6px}
+.why{color:var(--mute);margin:0 0 12px}
+ol.do{margin:0;padding-left:1.3em}
+ol.do li{margin:8px 0}
+.tip{background:var(--soft);border-radius:8px;padding:10px 12px;margin:12px 0 0;font-size:.95rem}
+.copy{display:flex;gap:8px;align-items:stretch;margin:6px 0 10px}
+.copy code{flex:1;min-width:0;overflow-wrap:anywhere;font:15px/1.4 ui-monospace,Menlo,Consolas,monospace;
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.copy button{flex:0 0 auto;padding:8px 14px}
+.copylabel{font-weight:600;font-size:.92rem;margin:12px 0 0}
+.result{white-space:pre-wrap;margin:12px 0 0;font-size:.95rem}
+.result a{color:var(--accent)}
+.jump{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.jump button{flex:0 0 auto;padding:6px 10px;font-size:.85rem;font-weight:500}
+.jump button.cur{border-color:var(--accent);color:var(--accent)}
+.jump button.done::before{content:"✓ ";color:var(--ok)}
+.auto{display:flex;gap:10px;align-items:center;font-weight:400;margin:12px 0 0}
+.auto input{width:auto}
+</style>
+</head>
+<body>
+<main>
+  <h1>Shorts control panel</h1>
+  <p class="sub">Make Shorts, and set up a channel step by step.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-make" aria-selected="true">Make a Short</button>
+    <button role="tab" id="tab-setup" aria-selected="false">Setup your channel agent</button>
+  </div>
+
+  <!-- ================= MAKE A SHORT ================= -->
+  <div id="page-make">
+  <section>
+    <h2>New Short</h2>
+    <label for="topic">Topic</label>
+    <input id="topic" placeholder="For example: Tata Sierra EV battery and range" autocomplete="off">
+
+    <label for="notes">Notes <span class="hint">(optional: points to cover, tone, what to avoid)</span></label>
+    <textarea id="notes" placeholder="Mention the price range, compare with the Creta, keep it friendly"></textarea>
+
+    <label for="voice">Voice</label>
+    <select id="voice">
+      <option value="en-US-AndrewNeural">Andrew (US male, warm)</option>
+      <option value="en-US-AriaNeural">Aria (US female)</option>
+      <option value="en-US-GuyNeural">Guy (US male, deep)</option>
+      <option value="en-IN-PrabhatNeural">Prabhat (Indian male)</option>
+      <option value="en-IN-NeerjaNeural">Neerja (Indian female)</option>
+      <option value="en-GB-RyanNeural">Ryan (UK male)</option>
+    </select>
+
+    <label for="media">Your photos or videos <span class="hint">(optional, up to 25 MB each)</span></label>
+    <input id="media" type="file" accept="image/*,video/*" multiple>
+    <ul id="files"></ul>
+
+    <div class="row">
+      <button id="queue">Add to queue</button>
+      <button id="now" class="primary">Add and make now</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Status</h2>
+    <p id="log">Ready.</p>
+    <div class="row"><button id="runs">Show latest runs</button></div>
+    <div id="runlist"></div>
+  </section>
+  </div>
+
+  <!-- ================= SETUP WIZARD ================= -->
+  <div id="page-setup" hidden>
+    <section>
+      <p class="stepcount" id="stepcount"></p>
+      <div class="progress"><div id="bar"></div></div>
+      <div class="step" id="stepbox"></div>
+      <div class="row">
+        <button id="back">Back</button>
+        <button id="openpage" hidden>Open the page</button>
+        <button id="next" class="primary">Done, next step</button>
+      </div>
+      <label class="auto"><input type="checkbox" id="autoopen" checked> Open each step's page by itself when I tap "Done, next step"</label>
+      <details style="margin-top:12px">
+        <summary>Jump to a step</summary>
+        <div class="jump" id="jump"></div>
+      </details>
+    </section>
+  </div>
+
+  <!-- ================= GITHUB CONNECTION (shared) ================= -->
+  <section>
+    <h2>GitHub connection</h2>
+    <label for="repo">Repository <span class="hint">(your-username/your-repo-name)</span></label>
+    <input id="repo" placeholder="username/YouTube" autocapitalize="off" autocomplete="off">
+    <label for="token">Access token</label>
+    <input id="token" type="password" placeholder="github_pat_..." autocomplete="off">
+    <div class="row"><button id="save">Save on this device</button></div>
+    <details style="margin-top:14px">
+      <summary>How to get the token</summary>
+      <p>On github.com open Settings, Developer settings, Personal access tokens, Fine-grained tokens, then Generate new token. Choose only your Shorts repository, and under Repository permissions set Contents and Actions to Read and write. The token stays in this browser only and is sent only to GitHub.</p>
+    </details>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = "https://api.github.com";
+let repo = "", tok = "";
+
+function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function recall(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+
+function load() {
+  repo = recall("sp_repo", ""); tok = recall("sp_tok", "");
+  $("repo").value = repo; $("token").value = tok;
+}
+function readConn() { repo = $("repo").value.trim(); tok = $("token").value.trim(); }
+function say(msg, cls) { const l = $("log"); l.textContent = msg; l.className = cls || ""; }
+function busy(b) { ["queue", "now", "runs"].forEach(i => $(i).disabled = b); }
+
+$("save").onclick = () => {
+  readConn();
+  try { localStorage.setItem("sp_repo", repo); localStorage.setItem("sp_tok", tok); say("Saved on this device.", "ok"); }
+  catch (e) { say("This browser would not save it. You will need to paste it each time.", "bad"); }
+  renderStep();
+};
+
+async function gh(path, opt = {}) {
+  const r = await fetch(API + path, { ...opt, headers: {
+    Authorization: "Bearer " + tok, Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28", ...(opt.headers || {}) } });
+  if (!r.ok) {
+    const t = await r.text();
+    const e = new Error(r.status + ": " + t.slice(0, 160)); e.status = r.status; throw e;
+  }
+  return r.status === 204 ? null : r.json();
+}
+const enc = s => { let x = ""; new TextEncoder().encode(s).forEach(c => x += String.fromCharCode(c)); return btoa(x); };
+const dec = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, "")), c => c.charCodeAt(0)));
+const fileB64 = f => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(r.result.split(",")[1]);
+  r.onerror = () => rej(new Error("Could not read " + f.name));
+  r.readAsDataURL(f);
+});
+
+// Finds which of the given workflow files exists in the repo (the Wow in 60 one may be daily.yml or daily-short.yml)
+async function findWorkflow(files) {
+  for (const f of files) {
+    try { await gh("/repos/" + repo + "/actions/workflows/" + f); return f; }
+    catch (e) { if (e.status !== 404) throw e; }
+  }
+  return null;
+}
+
+/* ---------------- Make a Short ---------------- */
+
+$("media").onchange = () => {
+  const ul = $("files"); ul.innerHTML = "";
+  [...$("media").files].forEach(f => {
+    const li = document.createElement("li");
+    const mb = (f.size / 1048576).toFixed(1);
+    li.textContent = f.name + " (" + mb + " MB)" + (f.size > 25 * 1048576 ? " is too large" : "");
+    ul.appendChild(li);
+  });
+};
+
+async function submit(runNow) {
+  readConn();
+  const topic = $("topic").value.trim();
+  if (!repo || !tok) return say("Add your repository and token under GitHub connection first.", "bad");
+  if (!topic) return say("Type a topic first.", "bad");
+  const files = [...$("media").files];
+  if (files.some(f => f.size > 25 * 1048576)) return say("Remove files larger than 25 MB.", "bad");
+  busy(true);
+  try {
+    const info = await gh("/repos/" + repo);
+    const branch = info.default_branch;
+    const media = [];
+    for (let i = 0; i < files.length; i++) {
+      say("Uploading file " + (i + 1) + " of " + files.length + "...");
+      const name = Date.now() + "_" + files[i].name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      await gh("/repos/" + repo + "/contents/media/" + name, { method: "PUT",
+        body: JSON.stringify({ message: "add media", content: await fileB64(files[i]), branch }) });
+      media.push("media/" + name);
+    }
+    say("Adding to the queue...");
+    let list = [], sha;
+    try {
+      const cur = await gh("/repos/" + repo + "/contents/queue.json?ref=" + branch);
+      sha = cur.sha; list = JSON.parse(dec(cur.content) || "[]");
+    } catch (e) { if (e.status !== 404) throw e; }
+    list.push({ topic, notes: $("notes").value.trim(), voice: $("voice").value, media });
+    const body = { message: "queue: " + topic.slice(0, 50), content: enc(JSON.stringify(list, null, 1)), branch };
+    if (sha) body.sha = sha;
+    await gh("/repos/" + repo + "/contents/queue.json", { method: "PUT", body: JSON.stringify(body) });
+    if (runNow) {
+      const wf = await findWorkflow(CHANNELS.wow.workflows);
+      if (!wf) throw new Error("Could not find the Wow in 60 workflow file (daily.yml or daily-short.yml) in your repo.");
+      await gh("/repos/" + repo + "/actions/workflows/" + wf + "/dispatches",
+        { method: "POST", body: JSON.stringify({ ref: branch }) });
+      say("Queued and started. The Short should be on your channel in about 8 to 10 minutes.", "ok");
+    } else {
+      say("Queued. " + list.length + " in the queue. The next daily run will use it.", "ok");
+    }
+    $("topic").value = ""; $("notes").value = ""; $("media").value = ""; $("files").innerHTML = "";
+  } catch (e) {
+    say("Could not finish: " + e.message + (e.status === 401 || e.status === 403 || e.status === 404
+      ? "\nCheck the repository name and that the token has Contents and Actions set to Read and write." : ""), "bad");
+  }
+  busy(false);
+}
+$("queue").onclick = () => submit(false);
+$("now").onclick = () => submit(true);
+
+$("runs").onclick = async () => {
+  readConn();
+  if (!repo || !tok) return say("Add your repository and token first.", "bad");
+  busy(true);
+  try {
+    const r = await gh("/repos/" + repo + "/actions/runs?per_page=6");
+    const box = $("runlist"); box.innerHTML = "";
+    if (!r.workflow_runs.length) box.textContent = "No runs yet.";
+    r.workflow_runs.forEach(w => {
+      const d = document.createElement("div"); d.className = "run";
+      const state = w.status !== "completed" ? "Running" : (w.conclusion === "success" ? "Done" : "Failed");
+      const a = document.createElement("a"); a.href = w.html_url; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = (w.name || "Run") + ", " + new Date(w.created_at).toLocaleString();
+      const b = document.createElement("span");
+      b.textContent = state; b.className = state === "Done" ? "ok" : state === "Failed" ? "bad" : "";
+      d.append(a, b); box.appendChild(d);
+    });
+    say("Latest runs loaded. Tap a run to open its log.", "ok");
+  } catch (e) { say("Could not load runs: " + e.message, "bad"); }
+  busy(false);
+};
+
+/* ---------------- Tabs ---------------- */
+
+function showTab(which) {
+  const setup = which === "setup";
+  $("tab-make").setAttribute("aria-selected", String(!setup));
+  $("tab-setup").setAttribute("aria-selected", String(setup));
+  $("page-make").hidden = setup; $("page-setup").hidden = !setup;
+  store("sp_tab", which);
+  if (setup) renderStep();
+}
+$("tab-make").onclick = () => showTab("make");
+$("tab-setup").onclick = () => showTab("setup");
+
+/* ---------------- Setup wizard ---------------- */
+
+const CHANNELS = {
+  kids: { label: "Giggle Garden Rhymes (kids rhymes)", name: "Giggle Garden Rhymes", secret: "KIDS_YT_REFRESH_TOKEN",
+          workflows: ["kids.yml"], agent: "kids_agent.py", lang: true, workflowName: "Giggle Garden Daily" },
+  wow:  { label: "Wow in 60 (facts)", name: "Wow in 60", secret: "YT_REFRESH_TOKEN",
+          workflows: ["daily.yml", "daily-short.yml"], agent: "agent.py", lang: false, workflowName: "Daily Short" }
+};
+const REDIRECT = "https://developers.google.com/oauthplayground";
+const SCOPES = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly";
+const APPNAME = "Shorts Agent";
+
+let step = parseInt(recall("sp_step", "0"), 10) || 0;
+let chanKey = recall("sp_chan", "kids");
+let chanName = recall("sp_chan_name", "");
+let doneSteps = new Set(JSON.parse(recall("sp_done", "[]")));
+// Client ID and secret are kept only while this page is open, never saved
+let clientId = "", clientSecret = "";
+
+const C = () => CHANNELS[chanKey] || CHANNELS.kids;
+const NAME = () => chanName || C().name;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const copyBox = (label, value) =>
+  `<p class="copylabel">${esc(label)}</p><div class="copy"><code>${esc(value)}</code><button data-copy="${esc(value)}">Copy</button></div>`;
+const ghUrl = path => repo ? "https://github.com/" + repo + path : "https://github.com";
+
+function playgroundUrl() {
+  if (!clientId || !clientSecret) return REDIRECT + "/";
+  const p = new URLSearchParams({
+    scopes: SCOPES, useDefaultOauthCred: "unchecked", oauthEndpointSelect: "Google",
+    oauthAuthEndpointValue: "https://accounts.google.com/o/oauth2/v2/auth",
+    oauthTokenEndpointValue: "https://oauth2.googleapis.com/token",
+    oauthClientId: clientId, oauthClientSecret: clientSecret, includeCredentials: "checked",
+    accessTokenType: "bearer", autoRefreshToken: "unchecked", accessType: "offline",
+    prompt: "consent", response_type: "code"
+  });
+  return REDIRECT + "/#step1&" + p.toString();
+}
+
+const STEPS = [
+  {
+    title: "Which channel are we setting up?",
+    url: null,
+    body: () => `
+      <p class="why">Pick the channel. Everything after this is written for it. You can come back and do the other one later.</p>
+      <label for="chansel">Channel</label>
+      <select id="chansel">${Object.entries(CHANNELS).map(([k, c]) =>
+        `<option value="${k}" ${k === chanKey ? "selected" : ""}>${esc(c.label)}</option>`).join("")}</select>
+      <label for="channame">Exact channel name on YouTube <span class="hint">(as you typed it when you made the channel)</span></label>
+      <input id="channame" value="${esc(NAME())}" autocomplete="off">
+      <div class="tip">Before you start: on a tablet, open the browser menu and switch on <b>Desktop site</b>. Google Cloud and GitHub settings only show fully in desktop mode. Use the browser, not the GitHub app.</div>
+      <div class="tip">Already set up and only renewing the weekly token? Tap <b>Jump to a step</b> below and pick step 6.</div>`,
+    after: () => {
+      $("chansel").onchange = e => { chanKey = e.target.value; chanName = ""; store("sp_chan", chanKey); store("sp_chan_name", ""); renderStep(); };
+      $("channame").oninput = e => { chanName = e.target.value.trim(); store("sp_chan_name", chanName); };
+    }
+  },
+  {
+    title: "Create the YouTube channel",
+    url: () => "https://www.youtube.com/channel_switcher",
+    body: () => `
+      <p class="why">Each agent uploads to its own channel. Skip this step if "${esc(NAME())}" already exists.</p>
+      <ol class="do">
+        <li>Tap <b>Open the page</b>. Sign in with the Gmail you use for your channels if asked.</li>
+        <li>Tap <b>Create a channel</b>.</li>
+        <li>Type the name below and tap <b>Create</b>.</li>
+      </ol>
+      ${copyBox("Channel name", NAME())}
+      <div class="tip">If the name is taken, add a word like Kids or Rhymes, then go back to step 1 and type the new name. For the kids channel the name must still contain "Giggle Garden".</div>`
+  },
+  {
+    title: "Turn on the YouTube upload service",
+    url: () => "https://console.cloud.google.com/apis/library/youtube.googleapis.com",
+    body: () => `
+      <p class="why">Google Cloud is where your agent gets permission to upload. This only needs doing once for all your channels.</p>
+      <ol class="do">
+        <li>Tap <b>Open the page</b>. At the very top, check your project name is shown (the one you made before).</li>
+        <li>If you see a blue <b>Enable</b> button, tap it.</li>
+        <li>If it says <b>Manage</b> or <b>API enabled</b>, it is already on. Nothing to do.</li>
+      </ol>`
+  },
+  {
+    title: "Fill in the app's Branding",
+    url: () => "https://console.cloud.google.com/auth/branding",
+    body: () => `
+      <p class="why">Google shows this name when you give permission. It must not contain YouTube, Google or YT, or Google blocks it.</p>
+      <ol class="do">
+        <li>Tap <b>Open the page</b>.</li>
+        <li>In <b>App name</b>, put the name below.</li>
+        <li>In <b>User support email</b>, choose your Gmail.</li>
+        <li>Leave the logo, home page, privacy policy and domains empty.</li>
+        <li>Scroll right to the bottom. In <b>Developer contact information</b>, type your Gmail again.</li>
+        <li>Tap <b>Save</b>.</li>
+      </ol>
+      ${copyBox("App name", APPNAME)}`
+  },
+  {
+    title: "Add yourself as a test user",
+    url: () => "https://console.cloud.google.com/auth/audience",
+    body: () => `
+      <p class="why">The app stays in "Testing", which is fine for your own channels. Only people on the test user list can use it.</p>
+      <ol class="do">
+        <li>Tap <b>Open the page</b>. Publishing status shows <b>Testing</b>. Leave it like that.</li>
+        <li>Scroll to <b>Test users</b> and tap <b>Add users</b>.</li>
+        <li>Type the Gmail that owns your YouTube channels and tap <b>Save</b>. If it is already listed, skip this.</li>
+      </ol>
+      <div class="tip">In Testing mode, the token you make in step 6 stops working after 7 days. When that happens, just do steps 6 and 7 again (about 3 minutes).</div>`
+  },
+  {
+    title: "Get your Client ID and Client Secret",
+    url: () => "https://console.cloud.google.com/apis/credentials",
+    body: () => `
+      <p class="why">These two codes identify your agent to Google. You will paste them into Google's token page in the next step.</p>
+      <ol class="do">
+        <li>Tap <b>Open the page</b>. Under <b>OAuth 2.0 Client IDs</b>, tap your client's name. Its name does not matter.<br>
+          <span class="hint">No client there? Tap Create credentials, OAuth client ID, choose Web application, then Create.</span></li>
+        <li>Under <b>Authorised redirect URIs</b>, make sure this address is there. If not, tap <b>Add URI</b>, paste it, and tap <b>Save</b>.
+          ${copyBox("Redirect address", REDIRECT)}</li>
+        <li>Copy the <b>Client ID</b> (it ends in apps.googleusercontent.com) and paste it in the box below.</li>
+        <li>The secret is usually hidden. Tap <b>Add secret</b>, copy the new secret straight away (Google shows it only once), and paste it below.</li>
+      </ol>
+      <label for="cid">Client ID <span class="hint">(kept only while this page is open)</span></label>
+      <input id="cid" value="${esc(clientId)}" autocomplete="off" autocapitalize="off">
+      <label for="csec">Client Secret <span class="hint">(kept only while this page is open, never saved)</span></label>
+      <input id="csec" type="password" value="${esc(clientSecret)}" autocomplete="off" autocapitalize="off">
+      <div class="tip">If you made a new secret, also update <b>YT_CLIENT_SECRET</b> in GitHub later, but only if the old secret stops working. Old secrets keep working.</div>`,
+    after: () => {
+      $("cid").oninput = e => { clientId = e.target.value.trim(); };
+      $("csec").oninput = e => { clientSecret = e.target.value.trim(); };
+    }
+  },
+  {
+    title: "Make the upload token",
+    url: () => playgroundUrl(),
+    body: () => `
+      <p class="why">Google's OAuth Playground gives your agent a long-lasting key, called a refresh token, for this one channel.</p>
+      ${clientId && clientSecret ? `<div class="tip">Your Client ID and Secret are sent to the page, so the settings and scopes may already be filled in. Check them in points 1 and 2 anyway.</div>` :
+        `<div class="tip">Tip: paste your Client ID and Secret into step 5 first and the page will try to fill everything in for you.</div>`}
+      <ol class="do">
+        <li>Tap <b>Open the page</b>. Tap the <b>gear icon</b> at the top right, tick <b>Use your own OAuth credentials</b>, and paste your Client ID and Client Secret from step 5.
+          ${clientId ? copyBox("OAuth Client ID", clientId) : ""}
+          ${clientSecret ? copyBox("OAuth Client secret", clientSecret) : ""}
+          Then close the gear menu.</li>
+        <li>On the left, in <b>Step 1</b>, find the box <b>Input your own scopes</b> near the bottom and paste:
+          ${copyBox("Scopes", SCOPES)}</li>
+        <li>Tap <b>Authorize APIs</b>. Choose your Gmail, then choose the channel <b>${esc(NAME())}</b>. Do not pick your other channel.</li>
+        <li>If Google says the app is not verified, tap <b>Advanced</b>, then <b>Go to ${esc(APPNAME)}</b>, then <b>Continue</b> or <b>Allow</b>.</li>
+        <li>Back on the Playground, in <b>Step 2</b>, tap <b>Exchange authorization code for tokens</b>.</li>
+        <li>Copy the <b>Refresh token</b>. It starts with <code>1//</code>. Do not copy the access token.</li>
+      </ol>`
+  },
+  {
+    title: "Save the token in GitHub",
+    url: () => ghUrl("/settings/secrets/actions/new"),
+    body: () => `
+      <p class="why">GitHub keeps the token locked away and hands it to the agent when it runs.</p>
+      ${repo ? "" : `<div class="tip bad">Fill in GitHub connection at the bottom of this page first, then tap Save on this device, so this button opens your repo.</div>`}
+      <ol class="do">
+        <li>Tap <b>Open the page</b>. It opens your repo's new secret form.</li>
+        <li>In <b>Name</b>, paste this exactly:${copyBox("Secret name", C().secret)}</li>
+        <li>In <b>Secret</b>, paste the refresh token from step 6.</li>
+        <li>Tap <b>Add secret</b>.</li>
+      </ol>
+      <div class="tip">Renewing an old token? If GitHub says the name already exists, open
+        <a href="${esc(ghUrl("/settings/secrets/actions"))}" target="_blank" rel="noopener">your secrets list</a>,
+        tap the pencil next to <b>${esc(C().secret)}</b>, paste the new token and tap <b>Update secret</b>.</div>`
+  },
+  {
+    title: "Check the agent files are in your repo",
+    url: () => ghUrl(""),
+    body: () => `
+      <p class="why">The channel needs its agent file and its daily schedule file in GitHub. Tap the button and this page checks for you.</p>
+      <div class="row"><button id="checkfiles" class="primary">Check my repo</button></div>
+      <p class="result" id="checkres"></p>`,
+    after: () => { $("checkfiles").onclick = checkFiles; }
+  },
+  {
+    title: "Run a test",
+    url: () => ghUrl("/actions"),
+    body: () => `
+      <p class="why">This starts the agent once now, so you can see it work. It takes about 5 to 10 minutes.</p>
+      ${C().lang ? `<label for="testlang">Language</label>
+      <select id="testlang"><option value="en">English</option><option value="hi">Hindi</option><option value="auto">Automatic (takes turns)</option></select>` : ""}
+      <div class="row"><button id="starttest" class="primary">Start a test run</button></div>
+      <p class="result" id="testres"></p>
+      <div class="tip">If it ends with a red cross, open the run, tap <b>make</b>, scroll to the bottom and copy the last 20 lines to Claude.</div>`,
+    after: () => { $("starttest").onclick = startTest; }
+  },
+  {
+    title: "All set",
+    url: null,
+    body: () => `
+      <p class="why">${esc(NAME())} now makes a video by itself every day.</p>
+      <ol class="do">
+        <li>Check the new video on YouTube Studio and see that it looks right.</li>
+        <li>Every 7 days, while the Google app is in Testing, the token expires. The run will fail with an "invalid_grant" error. Then tap <b>Renew the token</b> below and do steps 6 and 7 again.</li>
+        <li>Want to set up the other channel? Go back to step 1 and pick it.</li>
+      </ol>
+      <div class="row"><button id="renew" class="primary">Renew the token</button><button id="restart">Set up another channel</button></div>`,
+    after: () => {
+      $("renew").onclick = () => goStep(6, true);
+      $("restart").onclick = () => goStep(0, false);
+    }
+  }
+];
+
+function goStep(n, open) {
+  step = Math.max(0, Math.min(STEPS.length - 1, n));
+  store("sp_step", String(step));
+  renderStep();
+  const s = STEPS[step];
+  if (open && s.url) window.open(s.url(), "_blank", "noopener");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function renderStep() {
+  readConn();
+  const s = STEPS[step];
+  $("stepcount").textContent = "Step " + step + " of " + (STEPS.length - 1);
+  $("bar").style.width = (step / (STEPS.length - 1) * 100) + "%";
+  $("stepbox").innerHTML = `<h2>${esc(s.title)}</h2>` + s.body();
+  $("openpage").hidden = !s.url;
+  $("back").disabled = step === 0;
+  $("next").hidden = step === STEPS.length - 1;
+  $("next").textContent = step === 0 ? "Start" : "Done, next step";
+  if (s.after) s.after();
+  $("stepbox").querySelectorAll("[data-copy]").forEach(b => b.onclick = () => copyText(b.dataset.copy, b));
+  $("jump").innerHTML = STEPS.map((x, i) =>
+    `<button data-go="${i}" class="${i === step ? "cur" : ""} ${doneSteps.has(i) ? "done" : ""}">${i}. ${esc(x.title)}</button>`).join("");
+  $("jump").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goStep(+b.dataset.go, false));
+}
+
+async function copyText(text, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+    try { ok = document.execCommand("copy"); } catch (e2) {}
+    t.remove();
+  }
+  const old = btn.textContent; btn.textContent = ok ? "Copied" : "Copy failed";
+  setTimeout(() => btn.textContent = old, 1500);
+}
+
+$("openpage").onclick = () => { const s = STEPS[step]; if (s.url) window.open(s.url(), "_blank", "noopener"); };
+$("back").onclick = () => goStep(step - 1, false);
+$("next").onclick = () => {
+  doneSteps.add(step); store("sp_done", JSON.stringify([...doneSteps]));
+  goStep(step + 1, $("autoopen").checked);
+};
+$("autoopen").checked = recall("sp_auto", "1") === "1";
+$("autoopen").onchange = e => store("sp_auto", e.target.checked ? "1" : "0");
+
+async function checkFiles() {
+  readConn();
+  const out = $("checkres");
+  if (!repo || !tok) { out.className = "result bad"; out.textContent = "Fill in GitHub connection at the bottom of this page and tap Save on this device first."; return; }
+  out.className = "result"; out.textContent = "Checking...";
+  const exists = async p => { try { await gh("/repos/" + repo + "/contents/" + p); return true; } catch (e) { if (e.status === 404) return false; throw e; } };
+  try {
+    const lines = [];
+    const agentOk = await exists(C().agent);
+    lines.push((agentOk ? "✓ " : "✗ ") + C().agent + (agentOk ? " is there" : " is missing. Ask Claude for the full file, then add it to your repo with Add file, Create new file."));
+    let wf = null;
+    for (const f of C().workflows) if (await exists(".github/workflows/" + f)) { wf = f; break; }
+    lines.push((wf ? "✓ " : "✗ ") + (wf ? ".github/workflows/" + wf + " is there" :
+      "The schedule file " + C().workflows[0] + " is missing. Ask Claude for it, then create .github/workflows/" + C().workflows[0] + " in your repo."));
+    const reqOk = await exists("requirements.txt");
+    lines.push((reqOk ? "✓ " : "✗ ") + "requirements.txt" + (reqOk ? " is there" : " is missing. Ask Claude for it."));
+    const all = agentOk && wf && reqOk;
+    out.className = "result " + (all ? "ok" : "bad");
+    out.textContent = lines.join("\n") + (all ? "\n\nEverything is in place. Tap Done, next step." : "");
+  } catch (e) {
+    out.className = "result bad";
+    out.textContent = "Could not check: " + e.message + "\nCheck the repository name and token at the bottom of this page.";
+  }
+}
+
+let pollTimer = null;
+async function startTest() {
+  readConn();
+  const out = $("testres");
+  if (!repo || !tok) { out.className = "result bad"; out.textContent = "Fill in GitHub connection at the bottom of this page and tap Save on this device first."; return; }
+  $("starttest").disabled = true;
+  out.className = "result"; out.textContent = "Starting...";
+  try {
+    const info = await gh("/repos/" + repo);
+    const wf = await findWorkflow(C().workflows);
+    if (!wf) throw new Error("The schedule file for this channel is not in your repo. Go back one step and check.");
+    const body = { ref: info.default_branch };
+    if (C().lang && $("testlang")) body.inputs = { lang: $("testlang").value };
+    const started = Date.now() - 60000;
+    await gh("/repos/" + repo + "/actions/workflows/" + wf + "/dispatches", { method: "POST", body: JSON.stringify(body) });
+    out.textContent = "Started. Waiting for GitHub to pick it up...";
+    clearInterval(pollTimer);
+    let tries = 0;
+    const poll = async () => {
+      tries++;
+      try {
+        const r = await gh("/repos/" + repo + "/actions/workflows/" + wf + "/runs?per_page=1&event=workflow_dispatch");
+        const run = (r.workflow_runs || [])[0];
+        if (!run || new Date(run.created_at).getTime() < started) { out.textContent = "Started. Waiting for GitHub to pick it up..."; return; }
+        const link = `<a href="${esc(run.html_url)}" target="_blank" rel="noopener">Open the run</a>`;
+        if (run.status !== "completed") {
+          out.className = "result";
+          out.innerHTML = "Running... this page checks every 20 seconds. " + link;
+        } else if (run.conclusion === "success") {
+          clearInterval(pollTimer); $("starttest").disabled = false;
+          out.className = "result ok";
+          out.innerHTML = "✓ Finished with a green tick. Check YouTube Studio for the new video. " + link;
+        } else {
+          clearInterval(pollTimer); $("starttest").disabled = false;
+          out.className = "result bad";
+          out.innerHTML = "✗ It failed (" + esc(run.conclusion) + "). " + link + ", tap make, and copy the last 20 lines to Claude.";
+        }
+      } catch (e) { out.className = "result bad"; out.textContent = "Could not read the run status: " + e.message; }
+      if (tries > 120) { clearInterval(pollTimer); $("starttest").disabled = false; }
+    };
+    setTimeout(poll, 6000);
+    pollTimer = setInterval(poll, 20000);
+  } catch (e) {
+    $("starttest").disabled = false;
+    out.className = "result bad";
+    out.textContent = "Could not start: " + e.message + (e.status === 403 || e.status === 404
+      ? "\nCheck that your token has Actions set to Read and write." : "");
+  }
+}
+
+load();
+showTab(recall("sp_tab", "make"));
+</script>
+</body>
+</html>
