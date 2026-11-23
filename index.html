@@ -84,8 +84,54 @@ ol.do li{margin:8px 0}
   <p class="sub">Make Shorts, and set up a channel step by step.</p>
 
   <div class="tabs" role="tablist">
-    <button role="tab" id="tab-make" aria-selected="true">Make a Short</button>
-    <button role="tab" id="tab-setup" aria-selected="false">Setup your channel agent</button>
+    <button role="tab" id="tab-make" aria-selected="true">Wow in 60</button>
+    <button role="tab" id="tab-kids" aria-selected="false">Giggle Garden</button>
+    <button role="tab" id="tab-setup" aria-selected="false">Setup</button>
+  </div>
+
+  <!-- ================= GIGGLE GARDEN ================= -->
+  <div id="page-kids" hidden>
+  <section>
+    <h2>Make a rhyme now</h2>
+    <label for="k-lang">Language</label>
+    <select id="k-lang">
+      <option value="auto">Automatic (takes turns)</option>
+      <option value="en">English</option>
+      <option value="hi">Hindi</option>
+    </select>
+
+    <label class="auto"><input type="checkbox" id="k-music" checked> Add background music</label>
+
+    <div id="k-musicopts">
+      <label for="k-track">Track <span class="hint">(Auto rotates through your music folder)</span></label>
+      <select id="k-track"><option value="auto">Auto (rotate)</option></select>
+      <div class="row" style="margin-top:8px">
+        <button id="k-reload">Reload tracks</button>
+        <button id="k-preview">Preview track</button>
+      </div>
+      <audio id="k-audio" preload="none" hidden></audio>
+
+      <label for="k-level">Music intensity: <span id="k-levelval">3</span> of 10
+        <span class="hint">(1 very soft, 3 about a tenth of the voice, 10 strong)</span></label>
+      <input id="k-level" type="range" min="1" max="10" step="1" value="3" style="padding:0">
+    </div>
+
+    <div class="row">
+      <button id="k-save">Save as daily default</button>
+      <button id="k-run" class="primary">Make a rhyme now</button>
+    </div>
+    <p class="result" id="k-res"></p>
+  </section>
+
+  <section>
+    <h2>Daily automatic video</h2>
+    <p class="hint" id="k-defaults" style="margin:0">Tap "Load saved default" to see what the daily run uses.</p>
+    <div class="row"><button id="k-loaddef">Load saved default</button></div>
+    <details style="margin-top:12px">
+      <summary>Token permission needed for saving defaults</summary>
+      <p>Saving the daily default stores three settings in your repo (KIDS_MUSIC, KIDS_MUSIC_TRACK and KIDS_MUSIC_LEVEL). Your GitHub token needs <b>Variables</b> set to Read and write, as well as Contents and Actions. If saving fails with 403, edit the token on GitHub and add that permission.</p>
+    </details>
+  </section>
   </div>
 
   <!-- ================= MAKE A SHORT ================= -->
@@ -295,16 +341,191 @@ $("runs").onclick = async () => {
 
 /* ---------------- Tabs ---------------- */
 
+const TABS = ["make", "kids", "setup"];
 function showTab(which) {
-  const setup = which === "setup";
-  $("tab-make").setAttribute("aria-selected", String(!setup));
-  $("tab-setup").setAttribute("aria-selected", String(setup));
-  $("page-make").hidden = setup; $("page-setup").hidden = !setup;
+  if (!TABS.includes(which)) which = "make";
+  TABS.forEach(t => {
+    $("tab-" + t).setAttribute("aria-selected", String(t === which));
+    $("page-" + t).hidden = t !== which;
+  });
   store("sp_tab", which);
-  if (setup) renderStep();
+  if (which === "setup") renderStep();
+  if (which === "kids") kidsOpen();
 }
-$("tab-make").onclick = () => showTab("make");
-$("tab-setup").onclick = () => showTab("setup");
+TABS.forEach(t => $("tab-" + t).onclick = () => showTab(t));
+
+/* ---------------- Giggle Garden ---------------- */
+
+const MUSIC_EXT = /\.(mp3|m4a|aac|wav|ogg|flac|opus)$/i;
+let kidsTracks = [], kidsLoaded = false, kidsPoll = null;
+const kres = (msg, cls) => { const o = $("k-res"); o.className = "result " + (cls || ""); o.textContent = msg; };
+
+function kidsUi() {
+  $("k-musicopts").hidden = !$("k-music").checked;
+  $("k-levelval").textContent = $("k-level").value;
+}
+$("k-music").onchange = () => { kidsUi(); store("kg_music", $("k-music").checked ? "1" : "0"); };
+$("k-level").oninput = () => { kidsUi(); store("kg_level", $("k-level").value); };
+$("k-track").onchange = () => { store("kg_track", $("k-track").value); $("k-audio").pause(); };
+$("k-lang").onchange = () => store("kg_lang", $("k-lang").value);
+
+function kidsRestore() {
+  $("k-lang").value = recall("kg_lang", "auto");
+  $("k-music").checked = recall("kg_music", "1") === "1";
+  $("k-level").value = recall("kg_level", "3");
+  kidsUi();
+}
+
+function fillTracks(selected) {
+  const sel = $("k-track");
+  sel.innerHTML = `<option value="auto">Auto (rotate)</option>` +
+    kidsTracks.map(t => `<option value="${esc(t.name)}">${esc(t.name.replace(MUSIC_EXT, ""))}</option>`).join("");
+  sel.value = kidsTracks.some(t => t.name === selected) ? selected : "auto";
+}
+
+async function loadTracks() {
+  readConn();
+  if (!repo || !tok) { kres("Add your repository and token under GitHub connection first.", "bad"); return; }
+  $("k-reload").disabled = true;
+  try {
+    const list = await gh("/repos/" + repo + "/contents/music");
+    kidsTracks = (Array.isArray(list) ? list : []).filter(f => f.type === "file" && MUSIC_EXT.test(f.name));
+    fillTracks(recall("kg_track", "auto"));
+    kidsLoaded = true;
+    kres(kidsTracks.length + " tracks found in your music folder.", kidsTracks.length ? "ok" : "bad");
+  } catch (e) {
+    kres(e.status === 404 ? "No music folder found in your repo." : "Could not load tracks: " + e.message, "bad");
+  }
+  $("k-reload").disabled = false;
+}
+$("k-reload").onclick = loadTracks;
+
+$("k-preview").onclick = async () => {
+  const a = $("k-audio"), name = $("k-track").value;
+  if (!a.paused) { a.pause(); $("k-preview").textContent = "Preview track"; return; }
+  if (name === "auto") return kres("Pick a track to preview.", "bad");
+  readConn();
+  kres("Loading preview...");
+  try {
+    const r = await fetch(API + "/repos/" + repo + "/contents/music/" + encodeURIComponent(name), { headers: {
+      Authorization: "Bearer " + tok, Accept: "application/vnd.github.raw", "X-GitHub-Api-Version": "2022-11-28" } });
+    if (!r.ok) throw new Error(r.status + "");
+    if (a.src) URL.revokeObjectURL(a.src);
+    a.src = URL.createObjectURL(await r.blob());
+    a.volume = Math.min(1, 0.3 + $("k-level").value * 0.07);
+    a.onended = () => $("k-preview").textContent = "Preview track";
+    await a.play();
+    $("k-preview").textContent = "Stop preview";
+    kres("Playing " + name.replace(MUSIC_EXT, "") + ". In the video it plays much softer, under the voice.");
+  } catch (e) { kres("Could not play the preview: " + e.message, "bad"); }
+};
+
+function kidsChoice() {
+  return {
+    lang: $("k-lang").value,
+    music: $("k-music").checked ? "true" : "false",
+    music_track: $("k-music").checked ? $("k-track").value : "auto",
+    music_level: String($("k-level").value)
+  };
+}
+
+$("k-run").onclick = async () => {
+  readConn();
+  if (!repo || !tok) return kres("Add your repository and token under GitHub connection first.", "bad");
+  $("k-run").disabled = true;
+  try {
+    const info = await gh("/repos/" + repo);
+    const wf = await findWorkflow(CHANNELS.kids.workflows);
+    if (!wf) throw new Error("kids.yml is not in your repo.");
+    const c = kidsChoice(), started = Date.now() - 60000;
+    await gh("/repos/" + repo + "/actions/workflows/" + wf + "/dispatches",
+      { method: "POST", body: JSON.stringify({ ref: info.default_branch, inputs: c }) });
+    const desc = c.music === "true"
+      ? "music " + (c.music_track === "auto" ? "auto" : c.music_track.replace(MUSIC_EXT, "")) + ", intensity " + c.music_level
+      : "no music";
+    kres("Started (" + desc + "). Waiting for GitHub to pick it up...");
+    clearInterval(kidsPoll);
+    let tries = 0;
+    const poll = async () => {
+      tries++;
+      try {
+        const r = await gh("/repos/" + repo + "/actions/workflows/" + wf + "/runs?per_page=1&event=workflow_dispatch");
+        const run = (r.workflow_runs || [])[0];
+        if (!run || new Date(run.created_at).getTime() < started) return;
+        const o = $("k-res"), link = `<a href="${esc(run.html_url)}" target="_blank" rel="noopener">Open the run</a>`;
+        if (run.status !== "completed") { o.className = "result"; o.innerHTML = "Making the rhyme (" + esc(desc) + ")... " + link; }
+        else {
+          clearInterval(kidsPoll); $("k-run").disabled = false;
+          o.className = "result " + (run.conclusion === "success" ? "ok" : "bad");
+          o.innerHTML = run.conclusion === "success"
+            ? "✓ Done. Check YouTube Studio for the new rhyme. " + link
+            : "✗ It failed (" + esc(run.conclusion) + "). " + link + ", tap make, and copy the last 20 lines to Claude.";
+        }
+      } catch (e) { kres("Could not read the run status: " + e.message, "bad"); }
+      if (tries > 120) { clearInterval(kidsPoll); $("k-run").disabled = false; }
+    };
+    setTimeout(poll, 6000);
+    kidsPoll = setInterval(poll, 20000);
+  } catch (e) {
+    $("k-run").disabled = false;
+    kres("Could not start: " + e.message + (e.status === 403 || e.status === 404
+      ? "\nCheck that your token has Actions set to Read and write." : ""), "bad");
+  }
+};
+
+async function setVar(name, value) {
+  try {
+    await gh("/repos/" + repo + "/actions/variables/" + name, { method: "PATCH", body: JSON.stringify({ name, value }) });
+  } catch (e) {
+    if (e.status !== 404) throw e;
+    await gh("/repos/" + repo + "/actions/variables", { method: "POST", body: JSON.stringify({ name, value }) });
+  }
+}
+
+function describeDefaults(m, t, l) {
+  return m === "false" ? "Daily run: no background music."
+    : "Daily run: background music on, track " + (t && t !== "auto" ? t.replace(MUSIC_EXT, "") : "auto (rotate)") +
+      ", intensity " + (l || "3") + " of 10.";
+}
+
+$("k-save").onclick = async () => {
+  readConn();
+  if (!repo || !tok) return kres("Add your repository and token under GitHub connection first.", "bad");
+  $("k-save").disabled = true;
+  const c = kidsChoice();
+  try {
+    await setVar("KIDS_MUSIC", c.music);
+    await setVar("KIDS_MUSIC_TRACK", c.music_track);
+    await setVar("KIDS_MUSIC_LEVEL", c.music_level);
+    const d = describeDefaults(c.music, c.music_track, c.music_level);
+    $("k-defaults").textContent = d;
+    kres("Saved. " + d, "ok");
+  } catch (e) {
+    kres("Could not save: " + e.message + (e.status === 403
+      ? "\nYour token needs Variables set to Read and write. See the note under Daily automatic video." : ""), "bad");
+  }
+  $("k-save").disabled = false;
+};
+
+$("k-loaddef").onclick = async () => {
+  readConn();
+  if (!repo || !tok) return kres("Add your repository and token under GitHub connection first.", "bad");
+  const get = async n => { try { return (await gh("/repos/" + repo + "/actions/variables/" + n)).value; }
+                           catch (e) { if (e.status === 404) return ""; throw e; } };
+  try {
+    const m = (await get("KIDS_MUSIC")) || "true", t = (await get("KIDS_MUSIC_TRACK")) || "auto",
+          l = (await get("KIDS_MUSIC_LEVEL")) || "3";
+    $("k-defaults").textContent = describeDefaults(m, t, l);
+  } catch (e) {
+    $("k-defaults").textContent = "Could not load: " + e.message +
+      (e.status === 403 ? " (the token needs Variables set to Read and write)" : "");
+  }
+};
+
+function kidsOpen() {
+  if (!kidsLoaded) { readConn(); if (repo && tok) loadTracks(); }
+}
+kidsRestore();
 
 /* ---------------- Setup wizard ---------------- */
 
