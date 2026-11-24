@@ -251,6 +251,41 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
         <div class="jump" id="jump"></div>
       </details>
     </section>
+
+    <section id="secrets-card">
+      <h2>My keys and secrets</h2>
+      <p class="hint" style="margin:0 0 10px">Your own copy of every key, so you can copy it and paste it wherever it's needed. GitHub never shows a secret again after you save it, so keep them here. They're locked inside <b>vault.json</b> with your panel password, the same lock as "Use this panel on other devices".</p>
+      <div id="sec-locked">
+        <label for="sec-pass">Panel password</label>
+        <input id="sec-pass" type="password" autocomplete="current-password">
+        <div class="row"><button id="sec-unlock" class="primary">Unlock my secrets</button></div>
+      </div>
+      <div id="sec-open" hidden>
+        <ul id="sec-list" class="list"></ul>
+        <h2 style="margin-top:18px">Add or update a secret</h2>
+        <label for="sec-name">Which one</label>
+        <select id="sec-name"></select>
+        <div id="sec-otherbox" hidden>
+          <label for="sec-other">Name <span class="hint">(capital letters and underscores, like MY_KEY)</span></label>
+          <input id="sec-other" autocapitalize="characters" autocomplete="off">
+        </div>
+        <p class="hint" id="sec-help" style="margin:6px 0 0"></p>
+        <label for="sec-value">Value</label>
+        <input id="sec-value" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <label class="auto"><input type="checkbox" id="sec-showval"> Show what I typed</label>
+        <div class="row"><button id="sec-save" class="primary">Save</button><button id="sec-lock">Lock again</button></div>
+      </div>
+      <p class="result" id="sec-res"></p>
+      <div id="sec-commit" hidden>
+        <ol class="do">
+          <li>Tap <b>Copy</b> to copy the updated locked file:
+            <div class="copy"><code id="sec-json" style="max-height:100px;overflow:auto"></code><button id="sec-copy">Copy</button></div></li>
+          <li>Tap <b>Edit vault.json</b>, select everything in the big box, paste, and tap <b>Commit changes</b>.
+            <div class="row" style="margin-top:8px"><a class="btn" id="sec-edit" target="_blank" rel="noopener">Edit vault.json</a><a class="btn" id="sec-new" target="_blank" rel="noopener">No vault.json yet? Create it</a></div></li>
+        </ol>
+        <p class="hint">Tip: give your panel token access to the <b>admin</b> repo as well (Contents: Read and write), and the panel will save vault.json by itself next time.</p>
+      </div>
+    </section>
   </div>
 
   <!-- ================= GITHUB CONNECTION (shared) ================= -->
@@ -765,7 +800,8 @@ function playgroundUrl() {
     accessTokenType: "bearer", autoRefreshToken: "unchecked", accessType: "offline",
     prompt: "consent", response_type: "code"
   });
-  return REDIRECT + "/#step1&" + p.toString();
+  // Google's Playground reads "+" literally, so spaces must be sent as %20
+  return REDIRECT + "/#step1&" + p.toString().replace(/\+/g, "%20");
 }
 
 const N = id => STEPS.findIndex(s => s.id === id);
@@ -799,7 +835,7 @@ const STEPS = [
         <li>Tap <b>Open the page</b>. It opens GitHub's "New fine-grained personal access token" form. Sign in if asked.</li>
         <li><b>Token name</b>: type anything, for example:${copyBox("Token name", "Shorts panel")}</li>
         <li><b>Expiration</b>: choose <b>Custom</b> and pick a date about a year away (or the longest offered).</li>
-        <li><b>Repository access</b>: choose <b>Only select repositories</b>, then pick your <b>youtube</b> repo (the one with the agents, not the panel's repo).</li>
+        <li><b>Repository access</b>: choose <b>Only select repositories</b>, then pick your <b>youtube</b> repo (the one with the agents) <b>and</b> your <b>admin</b> repo (the panel's repo, so the panel can save your locked secrets by itself).</li>
         <li>Under <b>Permissions</b>, tap <b>Add permissions</b> and tick <b>Contents</b>, <b>Actions</b> and <b>Variables</b>. Set each one to <b>Read and write</b>. (Metadata turns on by itself as Read-only. That is fine.)</li>
         <li>Scroll down and tap <b>Generate token</b>. Copy the token straight away, because GitHub shows it only once.</li>
         <li>Paste it below, together with your repo name, and tap <b>Save and test</b>.</li>
@@ -1113,13 +1149,27 @@ async function startTest() {
   }
 }
 
-/* ---------------- Password lock ----------------
-   The token is encrypted in the browser with AES-GCM, using a key made from the password with PBKDF2
-   (SHA-256, 600,000 rounds). Only the encrypted copy is put in vault.json; the password never leaves the device. */
+/* ---------------- Password lock and secrets keeper ----------------
+   vault.json holds ONE encrypted package: {repo, token, secrets: {NAME: value}, updated}.
+   It is encrypted in the browser with AES-GCM, with a key made from the password by PBKDF2 (SHA-256, 600,000 rounds).
+   The password and the plain values never leave this device. */
 
 const VAULT_ITER = 600000;
-const b64 = u8 => btoa(String.fromCharCode(...u8));
+const b64 = u8 => { let x = ""; u8.forEach(c => x += String.fromCharCode(c)); return btoa(x); };
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+let VAULT = null;        // the encrypted vault.json, as loaded
+let PLAIN = null;        // the unlocked package, only in memory while this page is open
+let SESSION_PW = "";     // the password, only in memory while this page is open
+
+const SECRET_INFO = {
+  ANTHROPIC_API_KEY: "Claude API key, from console.anthropic.com. GitHub secret used by both channels.",
+  ANTHROPIC_API_KEY_2: "Backup Claude API key, used if the first one runs out of credit.",
+  PIXABAY_API_KEY: "Pixabay key, used by Wow in 60 for photos and videos.",
+  YT_CLIENT_ID: "Google Cloud OAuth Client ID (ends in apps.googleusercontent.com). Used by both channels.",
+  YT_CLIENT_SECRET: "Google Cloud OAuth Client Secret (starts with GOCSPX-). Used by both channels.",
+  YT_REFRESH_TOKEN: "Wow in 60 upload token (starts with 1//). Renew every 7 days while the Google app is in Testing.",
+  KIDS_YT_REFRESH_TOKEN: "Giggle Garden Rhymes upload token (starts with 1//). Renew every 7 days while in Testing.",
+};
 
 async function vaultKey(password, salt, iter) {
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
@@ -1127,28 +1177,86 @@ async function vaultKey(password, salt, iter) {
     { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 
-async function lockToken(password, repoName, token) {
+async function sealVault(password, pkg) {
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await vaultKey(password, salt, VAULT_ITER);
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key,
-    new TextEncoder().encode(JSON.stringify({ repo: repoName, token }))));
-  return { v: 1, kdf: "PBKDF2-SHA256", iter: VAULT_ITER, salt: b64(salt), iv: b64(iv), data: b64(ct) };
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(pkg))));
+  return { v: 2, kdf: "PBKDF2-SHA256", iter: VAULT_ITER, salt: b64(salt), iv: b64(iv), data: b64(ct) };
 }
 
 async function unlockVault(vault, password) {
   const key = await vaultKey(password, unb64(vault.salt), vault.iter || VAULT_ITER);
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(vault.iv) }, key, unb64(vault.data));
-  return JSON.parse(new TextDecoder().decode(plain));
+  const pkg = JSON.parse(new TextDecoder().decode(plain));
+  pkg.secrets = pkg.secrets || {};
+  return pkg;
 }
 
-// Where this panel is hosted (for the GitHub links): https://<owner>.github.io/<repo>/
+// Where this panel is hosted: https://<owner>.github.io/<repo>/
 function panelRepo() {
-  const host = location.hostname, m = host.match(/^([a-z0-9-]+)\.github\.io$/i);
+  const m = location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
   if (!m) return null;
   const seg = location.pathname.split("/").filter(Boolean)[0];
   return { owner: m[1], repo: seg && !seg.includes(".") ? seg : m[1] + ".github.io" };
 }
 
+// Reads vault.json: through the GitHub API when possible (always the newest), otherwise from this website
+async function fetchVault() {
+  const pr = panelRepo();
+  if (pr && tok) {
+    try {
+      const f = await gh(`/repos/${pr.owner}/${pr.repo}/contents/vault.json`);
+      return JSON.parse(dec(f.content));
+    } catch (e) { /* fall back to the website copy */ }
+  }
+  try {
+    const r = await fetch("vault.json", { cache: "no-store" });
+    if (!r.ok) return null;
+    const v = await r.json();
+    return v && v.data && v.salt && v.iv ? v : null;
+  } catch (e) { return null; }
+}
+
+// Saves vault.json into the panel's repo if the token is allowed to; otherwise shows copy-and-paste steps
+async function saveVaultFile(json, out, box) {
+  const pr = panelRepo();
+  if (pr && tok) {
+    try {
+      const path = `/repos/${pr.owner}/${pr.repo}/contents/vault.json`;
+      let sha;
+      try { sha = (await gh(path)).sha; } catch (e) { if (e.status !== 404) throw e; }
+      const body = { message: "update vault", content: enc(json) };
+      if (sha) body.sha = sha;
+      await gh(path, { method: "PUT", body: JSON.stringify(body) });
+      box.hidden = true;
+      return true;
+    } catch (e) { /* no permission for the panel's repo: show the manual steps */ }
+  }
+  box.hidden = false;
+  const code = box.querySelector("code"), copyBtn = box.querySelector("button");
+  code.textContent = json;
+  copyBtn.onclick = () => copyText(json, copyBtn);
+  const links = box.querySelectorAll("a.btn");
+  if (pr) {
+    links[0].href = `https://github.com/${pr.owner}/${pr.repo}/edit/main/vault.json`;
+    links[1].href = `https://github.com/${pr.owner}/${pr.repo}/new/main?filename=vault.json&value=${encodeURIComponent(json)}`;
+    links.forEach(a => a.hidden = false);
+  } else {
+    links.forEach(a => a.hidden = true);
+  }
+  return false;
+}
+
+async function writeVault(password) {
+  const pkg = { repo, token: tok, secrets: (PLAIN && PLAIN.secrets) || {}, updated: new Date().toISOString() };
+  const vault = await sealVault(password, pkg);
+  const check = await unlockVault(vault, password);
+  if (check.token !== tok) throw new Error("check failed");
+  VAULT = vault; PLAIN = pkg; SESSION_PW = password;
+  return JSON.stringify(vault);
+}
+
+/* --- "Use this panel on other devices": create or replace the lock --- */
 $("l-make").onclick = async () => {
   readConn();
   const out = $("l-res"); out.className = "result"; out.textContent = "";
@@ -1159,23 +1267,17 @@ $("l-make").onclick = async () => {
   if (!window.crypto || !crypto.subtle) { out.className = "result bad"; out.textContent = "This browser can't lock it here. Open the panel from its github.io link and try again."; return; }
   $("l-make").disabled = true; out.textContent = "Locking...";
   try {
-    const vault = await lockToken(p1, repo, tok);
-    const json = JSON.stringify(vault);
-    if ((await unlockVault(vault, p1)).token !== tok) throw new Error("check failed");
-    $("l-json").textContent = json;
-    $("l-copy").onclick = () => copyText(json, $("l-copy"));
-    const pr = panelRepo();
-    if (pr) {
-      $("l-new").href = `https://github.com/${pr.owner}/${pr.repo}/new/main?filename=vault.json&value=${encodeURIComponent(json)}`;
-      $("l-edit").href = `https://github.com/${pr.owner}/${pr.repo}/edit/main/vault.json`;
-      $("l-new").hidden = $("l-edit").hidden = false;
-    } else {
-      $("l-new").hidden = $("l-edit").hidden = true;
+    if (!PLAIN) {   // keep any secrets already in vault.json, if this is the same password
+      const old = VAULT || await fetchVault();
+      if (old) { try { PLAIN = await unlockVault(old, p1); } catch (e) { /* different password: start fresh */ } }
     }
-    $("l-msg").textContent = "Locked. Now save it as vault.json in your panel's repo (admin):" +
-      (pr ? "" : " open your admin repo on GitHub, tap Add file, Create new file, name it vault.json, paste and commit.");
-    $("l-out").hidden = false; out.textContent = "";
+    const json = await writeVault(p1);
+    const saved = await saveVaultFile(json, out, $("l-out"));
+    $("l-msg").textContent = saved ? "" : "Locked. Now save it as vault.json in your panel's repo (admin):";
+    out.className = "result ok";
+    out.textContent = saved ? "Locked and saved in vault.json. Other devices can now unlock the panel with this password." : "";
     $("l-pass").value = $("l-pass2").value = "";
+    showSecrets();
   } catch (e) { out.className = "result bad"; out.textContent = "Could not lock it: " + e.message; }
   $("l-make").disabled = false;
 };
@@ -1183,21 +1285,18 @@ $("l-make").onclick = async () => {
 $("forget").onclick = () => {
   try { localStorage.removeItem("sp_tok"); localStorage.removeItem("sp_repo"); } catch (e) {}
   repo = tok = ""; $("repo").value = $("token").value = "";
+  PLAIN = null; SESSION_PW = ""; lockSecrets();
   say("Forgotten on this device. Reload the page to unlock it again with your password.", "ok");
 };
 
-let VAULT = null;
+/* --- unlock card, shown on a device without the token --- */
 async function checkVault() {
   if (recall("sp_tok", "")) return;
-  try {
-    const r = await fetch("vault.json", { cache: "no-store" });
-    if (!r.ok) return;
-    const v = await r.json();
-    if (!v || !v.data || !v.salt || !v.iv) return;
-    VAULT = v;
-    $("unlock").hidden = false;
-    $("u-pass").focus();
-  } catch (e) { /* no vault: the normal token boxes are used */ }
+  const v = await fetchVault();
+  if (!v) return;
+  VAULT = v;
+  $("unlock").hidden = false;
+  $("u-pass").focus();
 }
 
 async function doUnlock() {
@@ -1206,14 +1305,15 @@ async function doUnlock() {
   out.className = "result"; out.textContent = "Unlocking...";
   $("u-go").disabled = true;
   try {
-    const got = await unlockVault(VAULT, $("u-pass").value);
-    repo = got.repo || ""; tok = got.token || "";
+    const pw = $("u-pass").value;
+    PLAIN = await unlockVault(VAULT, pw); SESSION_PW = pw;
+    repo = PLAIN.repo || ""; tok = PLAIN.token || "";
     $("repo").value = repo; $("token").value = tok;
     if ($("u-remember").checked) { store("sp_repo", repo); store("sp_tok", tok); }
     $("u-pass").value = "";
     $("unlock").hidden = true;
     say("Unlocked. Ready.", "ok");
-    renderStep();
+    renderStep(); showSecrets();
     kidsLoaded = false;
     if (!$("page-kids").hidden) kidsOpen();
   } catch (e) {
@@ -1225,9 +1325,111 @@ async function doUnlock() {
 $("u-go").onclick = doUnlock;
 $("u-pass").onkeydown = e => { if (e.key === "Enter") doUnlock(); };
 
+/* --- My keys and secrets --- */
+const sres = (msg, cls) => { const o = $("sec-res"); o.className = "result " + (cls || ""); o.textContent = msg; };
+const masked = v => v.length <= 8 ? "••••" : "••••" + v.slice(-4);
+
+function lockSecrets() {
+  $("sec-open").hidden = true; $("sec-locked").hidden = false; $("sec-commit").hidden = true;
+  $("sec-list").innerHTML = "";
+}
+
+function fillSecretNames() {
+  const sel = $("sec-name"), cur = sel.value;
+  const names = [...new Set([...Object.keys(SECRET_INFO), ...Object.keys((PLAIN && PLAIN.secrets) || {})])];
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}${PLAIN && PLAIN.secrets[n] ? " (saved)" : ""}</option>`).join("")
+    + `<option value="__other">Something else...</option>`;
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  secretHelp();
+}
+function secretHelp() {
+  const n = $("sec-name").value;
+  $("sec-otherbox").hidden = n !== "__other";
+  $("sec-help").textContent = n === "__other" ? "Any other key you want to keep." : (SECRET_INFO[n] || "");
+}
+$("sec-name").onchange = secretHelp;
+$("sec-showval").onchange = e => { $("sec-value").type = e.target.checked ? "text" : "password"; };
+
+function showSecrets() {
+  if (!PLAIN) { lockSecrets(); return; }
+  $("sec-locked").hidden = true; $("sec-open").hidden = false;
+  const ul = $("sec-list"); ul.innerHTML = "";
+  const rows = [["PANEL_GITHUB_TOKEN", PLAIN.token || tok, "The GitHub token this panel uses (not a GitHub secret)."],
+                ...Object.entries(PLAIN.secrets).sort().map(([k, v]) => [k, v, SECRET_INFO[k] || ""])];
+  rows.forEach(([name, value, help]) => {
+    if (!value) return;
+    const li = document.createElement("li");
+    li.style.flexWrap = "wrap";
+    const info = document.createElement("span");
+    info.innerHTML = `<b>${esc(name)}</b><br><code class="secval">${esc(masked(value))}</code>` + (help ? `<br><span class="hint">${esc(help)}</span>` : "");
+    const btns = document.createElement("span");
+    btns.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+    const mk = (label, fn) => { const b = document.createElement("button"); b.textContent = label; b.onclick = () => fn(b); btns.appendChild(b); return b; };
+    mk("Copy", b => copyText(value, b));
+    mk("Show", b => { const c = info.querySelector(".secval"); const showing = b.textContent === "Hide";
+                      c.textContent = showing ? masked(value) : value; b.textContent = showing ? "Show" : "Hide"; });
+    if (name !== "PANEL_GITHUB_TOKEN") {
+      if (repo) mk("Update in GitHub", () => window.open(`https://github.com/${repo}/settings/secrets/actions/${encodeURIComponent(name)}`, "_blank", "noopener"));
+      mk("Remove", b => {
+        if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Tap again"; return; }
+        delete PLAIN.secrets[name]; saveSecrets("Removed " + name + ".");
+      });
+    }
+    li.append(info, btns); ul.appendChild(li);
+  });
+  fillSecretNames();
+}
+
+$("sec-unlock").onclick = async () => {
+  readConn();
+  sres("Unlocking...");
+  $("sec-unlock").disabled = true;
+  try {
+    const v = await fetchVault();
+    if (!v) {
+      sres("There is no vault.json yet. First open GitHub connection (bottom of the page), then \"Use this panel on other devices\", and create the lock with a password.", "bad");
+    } else {
+      VAULT = v;
+      const pw = $("sec-pass").value;
+      PLAIN = await unlockVault(v, pw); SESSION_PW = pw;
+      $("sec-pass").value = "";
+      sres("");
+      showSecrets();
+    }
+  } catch (e) { sres("That password didn't work. Check it and try again.", "bad"); }
+  $("sec-unlock").disabled = false;
+};
+$("sec-pass").onkeydown = e => { if (e.key === "Enter") $("sec-unlock").click(); };
+$("sec-lock").onclick = () => { PLAIN = null; SESSION_PW = ""; lockSecrets(); sres("Locked.", "ok"); };
+
+async function saveSecrets(doneMsg) {
+  readConn();
+  if (!PLAIN || !SESSION_PW) { sres("Unlock your secrets first.", "bad"); return; }
+  if (!tok) { tok = PLAIN.token || ""; }
+  sres("Locking and saving...");
+  try {
+    const json = await writeVault(SESSION_PW);
+    const saved = await saveVaultFile(json, sres, $("sec-commit"));
+    sres(doneMsg + (saved ? " Saved in vault.json." : " One more step to keep it on every device:"), "ok");
+    showSecrets();
+  } catch (e) { sres("Could not save: " + e.message, "bad"); }
+}
+
+$("sec-save").onclick = () => {
+  let name = $("sec-name").value;
+  if (name === "__other") name = $("sec-other").value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+  const value = $("sec-value").value.trim();
+  if (!name) return sres("Type a name for it first.", "bad");
+  if (!value) return sres("Paste the value first.", "bad");
+  PLAIN.secrets[name] = value;
+  $("sec-value").value = ""; $("sec-other").value = "";
+  saveSecrets("Saved " + name + ".");
+};
+
 load();
 showTab(recall("sp_tab", "make"));
 checkVault();
+fillSecretNames();
 </script>
 </body>
 </html>
