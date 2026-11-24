@@ -108,7 +108,14 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
   <!-- ================= GIGGLE GARDEN ================= -->
   <div id="page-kids" hidden>
   <section>
-    <h2>Make a rhyme now</h2>
+    <h2>Make a video now</h2>
+    <label for="k-show">Character</label>
+    <select id="k-show">
+      <option value="auto">Automatic (Pip and Bobo take turns)</option>
+      <option value="pip">Pip the Bunny: good habits</option>
+      <option value="bobo">Bobo the Bear: learning and fun facts</option>
+      <option value="rhyme">Classic rhyme (no show)</option>
+    </select>
     <label for="k-lang">Language</label>
     <select id="k-lang">
       <option value="auto">Automatic (takes turns)</option>
@@ -119,7 +126,8 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
     <label for="k-voice-en" style="margin-top:14px">English voice</label>
     <select id="k-voice-en">
       <optgroup label="Natural voices (Kokoro)">
-        <option value="auto">Heart (warm, most natural, default)</option>
+        <option value="auto">Character's own voice (Pip: Bella, Bobo: Michael; rhymes: Heart)</option>
+        <option value="af_heart">Heart (warm, most natural)</option>
         <option value="af_bella">Bella (bright and friendly)</option>
         <option value="af_nicole">Nicole (soft and calm)</option>
         <option value="bf_emma">Emma (British)</option>
@@ -134,7 +142,8 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
     <label for="k-voice-hi">Hindi voice</label>
     <select id="k-voice-hi">
       <optgroup label="Older voices (edge-tts)">
-        <option value="auto">Swara (female, default)</option>
+        <option value="auto">Character's own voice (Pip: Swara, Bobo: Madhur)</option>
+        <option value="hi-IN-SwaraNeural">Swara (female)</option>
         <option value="hi-IN-MadhurNeural">Madhur (male, soft)</option>
       </optgroup>
       <optgroup label="Natural voices (Kokoro, Hindi is experimental)">
@@ -164,7 +173,7 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
 
     <div class="row">
       <button id="k-save">Save as daily default</button>
-      <button id="k-run" class="primary">Make a rhyme now</button>
+      <button id="k-run" class="primary">Make a video now</button>
     </div>
     <p class="result" id="k-res"></p>
   </section>
@@ -487,12 +496,15 @@ $("k-music").onchange = () => { kidsUi(); store("kg_music", $("k-music").checked
 $("k-level").oninput = () => { kidsUi(); store("kg_level", $("k-level").value); };
 $("k-track").onchange = () => { store("kg_track", $("k-track").value); $("k-audio").pause(); };
 $("k-lang").onchange = () => store("kg_lang", $("k-lang").value);
+$("k-show").onchange = () => store("kg_show", $("k-show").value);
 $("k-voice-en").onchange = () => store("kg_voice_en", $("k-voice-en").value);
 $("k-voice-hi").onchange = () => store("kg_voice_hi", $("k-voice-hi").value);
 const voiceName = (id, v) => { const o = [...$(id).options].find(x => x.value === v); return o ? o.textContent.split(" (")[0] : v; };
 
 function kidsRestore() {
   $("k-lang").value = recall("kg_lang", "auto");
+  $("k-show").value = recall("kg_show", "auto");
+  if (!$("k-show").value) $("k-show").value = "auto";
   $("k-voice-en").value = recall("kg_voice_en", "auto");
   $("k-voice-hi").value = recall("kg_voice_hi", "auto");
   if (!$("k-voice-en").value) $("k-voice-en").value = "auto";
@@ -550,6 +562,7 @@ $("k-preview").onclick = async () => {
 
 function kidsChoice() {
   return {
+    show: $("k-show").value,
     lang: $("k-lang").value,
     music: $("k-music").checked ? "true" : "false",
     music_track: $("k-music").checked ? $("k-track").value : "auto",
@@ -599,7 +612,7 @@ $("k-run").onclick = async () => {
   } catch (e) {
     $("k-run").disabled = false;
     kres("Could not start: " + e.message + (e.status === 422
-      ? "\nYour kids.yml is an older version without the voice options. Replace it with the newest kids.yml."
+      ? "\nYour kids.yml is an older version (without the character or voice options). Replace it with the newest kids.yml."
       : e.status === 403 || e.status === 404 ? "\nCheck that your token has Actions set to Read and write." : ""), "bad");
   }
 };
@@ -613,10 +626,11 @@ async function setVar(name, value) {
   }
 }
 
-function describeDefaults(m, t, l, ve, vh) {
+function describeDefaults(m, t, l, ve, vh, sh) {
+  const showTxt = { auto: "Pip and Bobo take turns", pip: "always Pip", bobo: "always Bobo", rhyme: "classic rhymes" }[sh || "auto"] || "Pip and Bobo take turns";
   const voices = " Voices: " + voiceName("k-voice-en", ve || "auto") + " (English), " + voiceName("k-voice-hi", vh || "auto") + " (Hindi).";
-  return (m === "false" ? "Daily run: no background music."
-    : "Daily run: background music on, track " + (t && t !== "auto" ? t.replace(MUSIC_EXT, "") : "auto (rotate)") +
+  return "Daily runs (twice a day): " + showTxt + ". " + (m === "false" ? "No background music."
+    : "Background music on, track " + (t && t !== "auto" ? t.replace(MUSIC_EXT, "") : "auto (rotate)") +
       ", intensity " + (l || "3") + " of 10.") + voices;
 }
 
@@ -631,7 +645,8 @@ $("k-save").onclick = async () => {
     await setVar("KIDS_MUSIC_LEVEL", c.music_level);
     await setVar("KIDS_VOICE_EN", c.voice_en);
     await setVar("KIDS_VOICE_HI", c.voice_hi);
-    const d = describeDefaults(c.music, c.music_track, c.music_level, c.voice_en, c.voice_hi);
+    await setVar("KIDS_SHOW", c.show);
+    const d = describeDefaults(c.music, c.music_track, c.music_level, c.voice_en, c.voice_hi, c.show);
     $("k-defaults").textContent = d;
     kres("Saved. " + d, "ok");
   } catch (e) {
@@ -649,8 +664,8 @@ $("k-loaddef").onclick = async () => {
   try {
     const m = (await get("KIDS_MUSIC")) || "true", t = (await get("KIDS_MUSIC_TRACK")) || "auto",
           l = (await get("KIDS_MUSIC_LEVEL")) || "3", ve = (await get("KIDS_VOICE_EN")) || "auto",
-          vh = (await get("KIDS_VOICE_HI")) || "auto";
-    $("k-defaults").textContent = describeDefaults(m, t, l, ve, vh);
+          vh = (await get("KIDS_VOICE_HI")) || "auto", sh = (await get("KIDS_SHOW")) || "auto";
+    $("k-defaults").textContent = describeDefaults(m, t, l, ve, vh, sh);
   } catch (e) {
     $("k-defaults").textContent = "Could not load: " + e.message +
       (e.status === 403 ? " (the token needs Variables set to Read and write)" : "");
