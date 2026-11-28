@@ -125,35 +125,33 @@ ul.list li button{flex:0 0 auto;padding:6px 12px;font-size:.88rem}
 
     <label for="k-voice-en" style="margin-top:14px">English voice</label>
     <select id="k-voice-en">
-      <optgroup label="Natural voices (Kokoro)">
-        <option value="auto">Character's own voice (Pip: Bella, Bobo: Michael; rhymes: Heart)</option>
-        <option value="af_heart">Heart (warm, most natural)</option>
-        <option value="af_bella">Bella (bright and friendly)</option>
-        <option value="af_nicole">Nicole (soft and calm)</option>
-        <option value="bf_emma">Emma (British)</option>
+      <optgroup label="Child voices (recommended)">
+        <option value="auto">Character's own child voice (Pip: little girl, Bobo: young boy)</option>
+        <option value="en-US-AnaNeural|+2Hz">Ana (little girl, American)</option>
+        <option value="en-GB-MaisieNeural|+0Hz">Maisie (little girl, British)</option>
+        <option value="en-GB-MaisieNeural|-8Hz">Maisie, a bit lower (sounds like a young boy)</option>
       </optgroup>
-      <optgroup label="Older voices (edge-tts)">
-        <option value="en-US-JennyNeural">Jenny (warm storyteller)</option>
-        <option value="en-US-AnaNeural">Ana (child voice)</option>
-        <option value="en-GB-MaisieNeural">Maisie (British child voice)</option>
-        <option value="en-IN-NeerjaNeural">Neerja (Indian English, lively)</option>
+      <optgroup label="Grown-up voices">
+        <option value="af_heart">Heart (warm woman, Kokoro)</option>
+        <option value="af_bella">Bella (bright woman, Kokoro)</option>
+        <option value="en-US-JennyNeural">Jenny (woman storyteller)</option>
       </optgroup>
     </select>
     <label for="k-voice-hi">Hindi voice</label>
     <select id="k-voice-hi">
-      <optgroup label="Older voices (edge-tts)">
-        <option value="auto">Character's own voice (Pip: Swara, Bobo: Madhur)</option>
-        <option value="hi-IN-SwaraNeural">Swara (female)</option>
-        <option value="hi-IN-MadhurNeural">Madhur (male, soft)</option>
+      <optgroup label="Child voices (recommended)">
+        <option value="auto">Character's own child voice (Pip: little girl, Bobo: young boy)</option>
+        <option value="hi-IN-SwaraNeural|+45Hz">Swara raised (little girl)</option>
+        <option value="hi-IN-SwaraNeural|+30Hz">Swara raised a little less (older girl)</option>
+        <option value="hi-IN-MadhurNeural|+50Hz">Madhur raised (young boy)</option>
+        <option value="hi-IN-MadhurNeural|+35Hz">Madhur raised a little less (older boy)</option>
       </optgroup>
-      <optgroup label="Natural voices (Kokoro, Hindi is experimental)">
-        <option value="hf_alpha">Alpha (female)</option>
-        <option value="hf_beta">Beta (female)</option>
-        <option value="hm_omega">Omega (male)</option>
-        <option value="hm_psi">Psi (male)</option>
+      <optgroup label="Grown-up voices">
+        <option value="hi-IN-SwaraNeural">Swara (woman)</option>
+        <option value="hi-IN-MadhurNeural">Madhur (man)</option>
       </optgroup>
     </select>
-    <p class="hint" style="margin:6px 0 0">The voice reads the rhyme like a storyteller. It cannot sing, so the rhymes don't use "la la la". Kokoro's Hindi voices had little training, so compare them with Swara before saving one as the daily default. If a Kokoro voice ever fails, the video uses Jenny (English) or Swara (Hindi) instead.</p>
+    <p class="hint" style="margin:6px 0 0">The narrator is a child by default. English uses real child voices. There is no free Hindi child voice, so a grown-up voice is raised in pitch to sound like a child: if it sounds odd, try the "a little less" choice. The voice reads the rhyme like a storyteller; it cannot sing.</p>
 
     <label class="auto"><input type="checkbox" id="k-music" checked> Add background music</label>
 
